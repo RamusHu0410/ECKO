@@ -12,7 +12,7 @@ class Config:
     
     # File upload configuration
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
-    UPLOAD_EXTENSIONS = ['.wav', 'wave']
+    UPLOAD_EXTENSIONS = ['wav', 'wave']
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or \
         os.path.join(basedir, '..', '..', 'uploads')
 
