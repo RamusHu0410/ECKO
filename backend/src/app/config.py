@@ -9,6 +9,12 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-change-in-production'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JSON_SORT_KEYS = False
+    
+    # File upload configuration
+    MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
+    UPLOAD_EXTENSIONS = ['.wav', '.wave']
+    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or \
+        os.path.join(basedir, '..', '..', 'uploads')
 
 class DevelopmentConfig(Config):
     DEBUG = True
@@ -24,6 +30,7 @@ class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
+    UPLOAD_FOLDER = os.path.join(basedir, '..', '..', 'test_uploads')
 
 config = {
     'development': DevelopmentConfig,
