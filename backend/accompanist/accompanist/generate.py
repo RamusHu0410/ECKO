@@ -9,7 +9,7 @@ Chains every stage:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import Optional
 
 from accompanist.models.chord import Chord
@@ -229,5 +229,4 @@ def generate_accompaniment(
         wav_path=out_wav,
         warnings=warnings,
     )
-    json_str = json.dumps(asdict(res), indent=2)
-    return json_str
+    return res

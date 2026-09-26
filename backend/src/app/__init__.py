@@ -19,7 +19,7 @@ def create_app(config_name=None):
     
     # Register blueprints
     app.register_blueprint(main_bp)
-    app.register_blueprint(accompaniment_bp)
+    app.register_blueprint(accompaniment_bp, url_prefix='/accompaniment')
     
     # Initialize extensions here if needed
     # from .extensions import db, migrate
