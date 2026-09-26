@@ -31,7 +31,7 @@ def create_app(config_name=None):
 
     # Register blueprints
     app.register_blueprint(main_bp)
-    app.register_blueprint(accompaniment_bp)
+    app.register_blueprint(accompaniment_bp, url_prefix='/accompaniment')
 
     # API blueprints (Auth0-protected app data)
     from .routes.auth import bp as auth_bp

@@ -13,3 +13,6 @@ dev.db
 # Python caches
 __pycache__/
 .pytest_cache/
+
+# Uploads (generated at runtime)
+backend/uploads/

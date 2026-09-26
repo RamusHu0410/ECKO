@@ -21,8 +21,10 @@ import {
 } from './homeCopy'
 
 /**
- * The turntable scene: the header top-left, the turntable in the middle with the microphone
- * below it, and the adjustments panel on the right. Narrow screens stack them in that order.
+ * The turntable scene: the header top-left, the turntable centered with the microphone below
+ * it. Once a hum presses and uploads successfully, the turntable settles into a top-down
+ * birdview and the adjustments panel fades in beneath it. Narrow screens stack it all the same
+ * way.
  */
 export default function HomePage() {
   const reducedMotion = useReducedMotion() ?? false
@@ -49,10 +51,11 @@ export default function HomePage() {
   })
 
   const recording = phase === 'recording'
+  const adjustable = phase === 'ready'
 
   return (
-    <main className="grid min-h-dvh grid-cols-1 gap-y-6 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-y-0 lg:px-12 lg:py-10">
-      <header className="lg:self-start">
+    <main className="grid min-h-dvh grid-cols-1 gap-y-6 px-5 py-8 lg:px-12 lg:py-10">
+      <header>
         <h1 className="font-display text-5xl tracking-wide text-ink">ECKO</h1>
         <p className="mt-2 text-lg text-ink">Hum a tune. Get a song.</p>
         <p className="mt-1 max-w-64 text-sm leading-snug text-ink-muted">
@@ -73,6 +76,7 @@ export default function HomePage() {
           }}
           tonearm={{ onRecord: phase === 'ready', reducedMotion }}
           modes={{ mode, onChange: setMode }}
+          topDown={adjustable}
         />
 
         {/* status under the turntable; messages float here so nothing shifts */}
@@ -135,11 +139,15 @@ export default function HomePage() {
         <p className="sr-only" aria-live="polite">
           {ANNOUNCEMENTS[phase] ?? ''}
         </p>
-      </section>
 
-      <aside aria-label="Adjustments" className="flex justify-center lg:items-center lg:justify-end">
-        <AdjustmentsPanel settings={settings} onChange={update} />
-      </aside>
+        <AnimatePresence>
+          {adjustable && (
+            <motion.div key="adjustments" className="mt-8 w-full flex justify-center" {...appear}>
+              <AdjustmentsPanel settings={settings} onChange={update} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </section>
     </main>
   )
 }
