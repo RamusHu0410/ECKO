@@ -1,5 +1,5 @@
 import pytest
-from src.app import create_app
+from app import create_app
 
 
 def test_create_app_returns_flask_app():

@@ -15,11 +15,15 @@ from accompanist.music.styles import STYLES
 from accompanist.music.voice_leading import lead_voices
 
 DEFAULT_PROGRAM = 0       # Acoustic Grand Piano (accompaniment)
-DEFAULT_VELOCITY = 80
-# Melody sits on its own, brighter instrument and louder so it stands out.
+DEFAULT_VELOCITY = 127    # loud (max)
+# Melody and accompaniment play at the same, full volume.
 MELODY_PROGRAM = 0        # keep piano timbre; adjust if you want a lead voice
-MELODY_VELOCITY = 118     # loud, so the tune is clearly on top
-ACCOMP_VELOCITY_SCALE = 1.0  # keep the accompaniment at its natural volume
+MELODY_VELOCITY = 127     # same as the accompaniment — equal, loud
+ACCOMP_VELOCITY_SCALE = 1.0
+# Force every accompaniment note to this fixed velocity so per-style dynamic
+# reductions don't make it quieter than the melody. Set to None to keep each
+# style's own internal dynamics.
+ACCOMP_FIXED_VELOCITY = 127
 
 # Named General MIDI instruments (program numbers) for convenience.
 INSTRUMENTS: dict[str, int] = {
@@ -107,8 +111,12 @@ def render_accompaniment(
                 ev_end = min(ev_start + ev_dur, bar_end_beat)
                 if ev_end <= ev_start:
                     continue  # fully out of bounds; skip
-                # Pull the accompaniment back so the melody sits clearly on top.
-                scaled_vel = max(1, min(127, int(vel * ACCOMP_VELOCITY_SCALE)))
+                # Equal, loud volume: force a fixed velocity if configured,
+                # otherwise keep the style's own dynamics (scaled).
+                if ACCOMP_FIXED_VELOCITY is not None:
+                    scaled_vel = ACCOMP_FIXED_VELOCITY
+                else:
+                    scaled_vel = max(1, min(127, int(vel * ACCOMP_VELOCITY_SCALE)))
                 acc.notes.append(
                     pretty_midi.Note(
                         velocity=scaled_vel,

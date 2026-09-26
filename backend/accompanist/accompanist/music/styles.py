@@ -64,17 +64,40 @@ def cinematic_style(pitches, start, dur, velocity) -> list[NoteEvent]:
 
 
 def classical_style(pitches, start, dur, velocity) -> list[NoteEvent]:
-    """Classical: broken chords (root, fifth, third, fifth) with voice leading.
+    """Classical: warm Alberti-style accompaniment with a sustained harmony.
+
+    The previous version arpeggiated root-fifth-third-fifth as bare single
+    notes, which emphasized hollow open fifths and rarely sounded the third —
+    that reads as eerie/"creepy" even in a major key. Instead we now:
+
+      * hold a soft, sustained triad under the whole bar so the *full* chord
+        (including the warm major/minor third) always rings, and
+      * lay a gentle Alberti pattern (low - high - mid - high) on top for
+        motion, with a light dynamic swell.
 
     The `pitches` passed in should already be voice-led (see voice_leading).
     """
     root, third, fifth = _root_third_fifth(pitches)
-    pattern = [root, fifth, third, fifth]
-    step = dur / len(pattern)
-    return [
-        (p, start + k * step, step, velocity)
-        for k, p in enumerate(pattern)
-    ]
+
+    events: list[NoteEvent] = []
+
+    # 1) Soft sustained triad for the whole bar, an octave DOWN, so the full
+    #    harmony (with its third) always rings underneath without crowding the
+    #    melody's register. This is what removes the hollow, eerie quality.
+    pad_vel = max(1, velocity - 30)
+    for p in (root, third, fifth):
+        events.append((p - 12, start, dur, pad_vel))
+
+    # 2) Gentle Alberti figuration in the accompaniment octave for motion:
+    #    low-high-mid-high. Using the third as the "mid" keeps the warm
+    #    major/minor color audible rather than hammering the open fifth.
+    figure = [root, fifth, third, fifth]
+    step = dur / len(figure)
+    for k, p in enumerate(figure):
+        v = velocity if k == 0 else max(1, velocity - 10)  # slight downbeat lift
+        events.append((p, start + k * step, step * 0.95, v))
+
+    return events
 
 
 def _diatonic_seventh(root: int, third: int, fifth: int) -> int:
