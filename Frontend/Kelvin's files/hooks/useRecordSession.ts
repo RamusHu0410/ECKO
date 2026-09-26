@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { MAX_RECORDING_MS, useRecorder, type RecorderPhase } from './useRecorder'
 import { LEVEL_SAMPLE_MS, useMicLevel } from './useMicLevel'
 import { useHumUpload, type UploadStatus } from './useHumUpload'
+import { useSong, type SongStatus } from './useSong'
 import { useTurntable, type PlatterSpeed } from './useTurntable'
 import { useAccompaniment } from './useAccompaniment'
 import { readNumberToken } from '../design/readToken'
+import type { SongSettings } from './useSongSettings'
 
 /**
- * What the disc shows. After pressing, the record waits (turning slowly) while the backend
- * works, then is ready (full speed, tap to pause) or failed (Try again resends the same hum).
+ * What the disc shows. After pressing, the record waits (turning slowly) while the backend saves
+ * the hum and makes its song, then is ready (full speed, the song plays, tap to pause) or failed
+ * (Try again resends the same hum, or asks for its song again).
  */
 export type SessionPhase =
   | 'idle'
@@ -34,13 +37,14 @@ const PLATTER_SPEED: Record<SessionPhase, PlatterSpeed> = {
   'mic-error': 'still',
 }
 
-/** One hum from start to finish: record → press into vinyl → send to the backend → spin. */
-export function useRecordSession(reducedMotion: boolean) {
+/** One hum from start to finish: record → press into vinyl → send to the backend → make its song → spin. */
+export function useRecordSession(reducedMotion: boolean, settings: SongSettings) {
   const pressDurationMs = useMemo(() => readNumberToken('--duration-press-vinyl'), [])
   const recorder = useRecorder(pressDurationMs)
   const mic = useMicLevel(recorder.stream)
   const upload = useHumUpload()
-  const phase = sessionPhase(recorder.phase, upload.status)
+  const song = useSong(settings)
+  const phase = sessionPhase(recorder.phase, upload.status, song.status)
   const turntable = useTurntable(PLATTER_SPEED[phase], reducedMotion)
   const accompaniment = useAccompaniment(upload.status === 'sent' ? (upload.reply?.melody ?? null) : null)
 
@@ -50,6 +54,7 @@ export function useRecordSession(reducedMotion: boolean) {
     if (recorder.recording) send(recorder.recording)
   }, [recorder.recording, send])
 
+<<<<<<< HEAD
   // the platter and the accompaniment play/pause together, once the WAV is ready
   const { status: accompanimentStatus, play: playAccompaniment, pause: pauseAccompaniment } = accompaniment
   useEffect(() => {
@@ -61,24 +66,49 @@ export function useRecordSession(reducedMotion: boolean) {
   const { prime } = mic
   const { reset: resetUpload } = upload
   const { reset: resetAccompaniment } = accompaniment
+=======
+  // each saved hum gets its song made right away, with the settings as they are
+  const { make } = song
+  useEffect(() => {
+    if (upload.reply) void make(upload.reply.filename)
+  }, [upload.reply, make])
+
+  const { prime } = mic
+  const { reset: resetUpload } = upload
+  const { reset: resetSong } = song
+>>>>>>> fe663df (bugs fixed, elevenlabs)
   const { rewind, togglePause } = turntable
   const { start, stop, reset: resetRecorder } = recorder
 
   const record = useCallback(() => {
     prime() // inside the tap: iOS only starts audio from a user gesture
     resetUpload()
+<<<<<<< HEAD
     resetAccompaniment()
     rewind()
     start()
   }, [prime, resetUpload, resetAccompaniment, rewind, start])
+=======
+    resetSong()
+    rewind()
+    start()
+  }, [prime, resetUpload, resetSong, rewind, start])
+>>>>>>> fe663df (bugs fixed, elevenlabs)
 
-  /** Back to an empty glass disc (tonearm home, upload forgotten), ready for the next hum. */
+  /** Back to an empty glass disc (tonearm home, upload and song forgotten), ready for the next hum. */
   const reset = useCallback(() => {
     resetUpload()
+<<<<<<< HEAD
     resetAccompaniment()
     rewind()
     resetRecorder()
   }, [resetUpload, resetAccompaniment, rewind, resetRecorder])
+=======
+    resetSong()
+    rewind()
+    resetRecorder()
+  }, [resetUpload, resetSong, rewind, resetRecorder])
+>>>>>>> fe663df (bugs fixed, elevenlabs)
 
   const tap = useCallback(() => {
     if (phase === 'recording') stop()
@@ -101,21 +131,31 @@ export function useRecordSession(reducedMotion: boolean) {
     rotation: turntable.rotation,
     paused: turntable.paused,
     micProblem: recorder.problem,
+<<<<<<< HEAD
     uploadFailure: upload.failure,
     accompanimentFailure: accompaniment.failure,
+=======
+    uploadFailure: upload.failure ?? song.failure,
+    /** The song to play on the record (null until it's made). */
+    song: song.song,
+    /** What the notes graph shows for the playing version (null until it arrives). */
+    notes: song.notes,
+    /** Makes the song again from the same hum with new settings; the old one plays until then. */
+    remakeSong: song.remake,
+>>>>>>> fe663df (bugs fixed, elevenlabs)
     tap,
     record,
     /** Ends the recording now (hold-to-record releases the mic). */
     stopRecording: stop,
     reset,
-    retry: upload.retry,
+    retry: upload.status === 'failed' ? upload.retry : song.retry,
   }
 }
 
-function sessionPhase(recorder: RecorderPhase, upload: UploadStatus): SessionPhase {
+function sessionPhase(recorder: RecorderPhase, upload: UploadStatus, song: SongStatus): SessionPhase {
   if (recorder === 'error') return 'mic-error'
   if (recorder !== 'done') return recorder
-  if (upload === 'sent') return 'ready'
-  if (upload === 'failed') return 'failed'
+  if (upload === 'failed' || song === 'failed') return 'failed'
+  if (upload === 'sent' && song === 'ready') return 'ready'
   return 'waiting'
 }

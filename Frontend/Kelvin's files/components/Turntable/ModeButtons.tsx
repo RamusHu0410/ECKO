@@ -10,7 +10,7 @@ interface ModeButtonsProps {
   onChange: (mode: Mode) => void
 }
 
-/** HUM / TALK keys on the plinth's front face, like a turntable's speed buttons. */
+/** HUM / TALK keys beside the microphone, styled like a turntable's speed buttons. */
 export default function ModeButtons({ mode, onChange }: ModeButtonsProps) {
   return (
     <div className="tt-keys" role="radiogroup" aria-label="Input">

@@ -28,7 +28,12 @@ dependencies = [
     "flask-cors>=6.0.5",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "elevenlabs>=2.69.0",
+    "google-genai>=2.25.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 [project.scripts]
 app = "app:main"
@@ -41,9 +46,6 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
-
-[tool.pytest.ini_options]
-pythonpath = ["."]
 
 [tool.uv.workspace]
 members = [

@@ -211,14 +211,12 @@
     filter: drop-shadow(5px 8px 4px rgba(20, 10, 4, 0.45));
   }
 
-  /* HUM / TALK: speed-style keys on the plinth's front face, each with an indicator light */
+  /* HUM / TALK: speed-style keys, stacked beside the microphone, each with an indicator light.
+     (Not on the plinth: its front face disappears when the turntable turns to the top-down view.) */
   .tt-keys {
-    position: absolute;
-    left: 5%;
-    top: 14%;
-    bottom: 14%;
     display: flex;
-    gap: calc(var(--plate-w) * 0.025);
+    flex-direction: column;
+    gap: 10px;
   }
 
   .tt-key {
@@ -227,6 +225,7 @@
     align-items: center;
     gap: 0.55em;
     min-width: calc(var(--plate-w) * 0.14);
+    height: 36px;
     padding: 0 0.9em;
     border-radius: 5px;
     font-size: max(11px, calc(var(--plate-w) * 0.024));
