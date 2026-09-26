@@ -28,7 +28,7 @@ export const TONEARM = {
   playAngle: (-35 * Math.PI) / 180,
 }
 
-/** HUM and TALK: push buttons on the front of the plinth, at the left, each with an LED above it. */
+/** HUM: a push button on the front of the plinth, at the left, with an LED above it. */
 export const KEY = { width: 0.072, height: 0.03, depth: 0.012, travel: 0.004, gap: 0.014, left: -0.21 }
 export const KEY_Y = FOOT.height + PLINTH.height * 0.4
 export const LED_Y = FOOT.height + PLINTH.height * 0.84

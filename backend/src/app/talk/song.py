@@ -193,7 +193,7 @@ def arrange(midi_path: str, chords: list, settings: SongSettings, tempo: float) 
     seconds_per_beat = 60 / tempo
     for part in settings.instruments:
         if part.role == "background" and part.name in PROGRAMS:
-            track = _beat(chords, seconds_per_beat) if part.name == DRUMS else _held_chords(part.name, chords, seconds_per_beat)
+            track = _beat(chords, seconds_per_beat, half * 2) if part.name == DRUMS else _held_chords(part.name, chords, seconds_per_beat)
             track.notes = [note for note in track.notes if _plays(part.section, note.start, half)]
             _set_volume(track, BACKGROUND_VOLUME[part.level])
             song.instruments.append(track)
@@ -248,10 +248,11 @@ def _held_chords(name: str, chords: list, seconds_per_beat: float) -> pretty_mid
     return track
 
 
-def _beat(chords: list, seconds_per_beat: float) -> pretty_midi.Instrument:
-    """A simple beat in eighth notes, for as long as the chords last."""
+def _beat(chords: list, seconds_per_beat: float, song_seconds: float) -> pretty_midi.Instrument:
+    """A simple beat in eighth notes, for as long as the chords last (or the whole song, when the
+    engine found no chords for the hum)."""
     track = pretty_midi.Instrument(program=0, is_drum=True, name=DRUMS)
-    beats = max(chord.start + chord.duration for chord in chords)
+    beats = max((chord.start + chord.duration for chord in chords), default=song_seconds / seconds_per_beat)
     for eighth in range(int(beats * 2)):
         at = eighth / 2 * seconds_per_beat
         for drum, velocity, eighths in BEAT:

@@ -7,8 +7,10 @@
  */
 
 const DATABASE = 'ecko'
-const VERSION = 1
+const VERSION = 2
 export const RECORDS = 'records'
+/** Records shared to the community feed (data/community.ts), each with its own copy of the audio. */
+export const POSTS = 'posts'
 
 let opening: Promise<IDBDatabase> | null = null
 
@@ -25,6 +27,9 @@ function open(): Promise<IDBDatabase> {
       const database = request.result
       if (!database.objectStoreNames.contains(RECORDS)) {
         database.createObjectStore(RECORDS, { keyPath: 'id' }).createIndex('madeAt', 'madeAt')
+      }
+      if (!database.objectStoreNames.contains(POSTS)) {
+        database.createObjectStore(POSTS, { keyPath: 'id' }).createIndex('createdAt', 'createdAt')
       }
     }
     request.onsuccess = () => resolve(request.result)

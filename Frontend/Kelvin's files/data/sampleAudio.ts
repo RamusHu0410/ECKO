@@ -1,9 +1,10 @@
 /*
- * Stand-in audio for the sample feed, so its play buttons do something before there is a backend.
- * Each row gets a short phrase built from its own id, rendered to a WAV in the browser.
+ * Stand-in audio for the sample community posts, so their play buttons do something before there
+ * is a backend.
+ * Each post gets a short phrase built from its own id, rendered to a WAV in the browser.
  *
- * TODO(backend): delete this file once shared records carry real audio; `FeedRecord.audioUrl`
- * then holds the address the server serves and nothing else changes.
+ * TODO(backend): delete this file once shared posts carry real audio; `Post.audioUrl`
+ * (data/community.ts) then holds the address the server serves and nothing else changes.
  */
 
 const RATE = 22_050
