@@ -24,7 +24,7 @@ import soundfile as sf
 from scipy.signal import butter, sosfiltfilt
 
 from .intake import AudioInputError, inspect_wav
-from .notes import DEFAULT_SETTINGS, NoteSettings, estimate_tempo_from_onsets, estimate_tuning, noise_gate, segment_notes
+from .notes import DEFAULT_SETTINGS, NoteSettings, estimate_tempo_from_onsets, estimate_tuning, noise_gate, segment_notes, sounding_runs
 
 logger = logging.getLogger(__name__)
 
@@ -445,6 +445,59 @@ def _pitch_track(pitch: Dict[str, Any]):
     return times, midi, active, rms_db
 
 
+MAX_CONTOUR_POINTS = 900  # the graph is ~640 px wide; more points than this only cost bytes
+
+
+def pitch_contour(
+    pitch: Dict[str, Any],
+    tuning: float = 0.0,
+    settings: NoteSettings = DEFAULT_SETTINGS,
+) -> Dict[str, Any]:
+    """The frame-by-frame pitch track, compact enough to send to the browser.
+
+    The notes graph draws the hum as it was actually sung -- every scoop, slide and wobble --
+    rather than as the rectangles ``segment_notes`` rounds it into. Each run of sounding frames
+    becomes one segment, so a phrase is one smooth curve and silences break the line instead of
+    being drawn through::
+
+        {"step": 0.012, "segments": [{"start": 0.23, "midi": [60.1, ...], "level": [0.4, ...]}]}
+
+    ``midi`` is tuning-corrected like the notes, and ``level`` is loudness rescaled to 0-1
+    between the noise gate and the loudest frame, which is what the drawing uses for the
+    thickness and opacity of the line.
+    """
+    if not isinstance(pitch, dict):
+        return {"step": 0.0, "segments": []}
+    times, midi, active, rms_db = _pitch_track(pitch)
+    if times.size < 2:
+        return {"step": 0.0, "segments": []}
+
+    if rms_db is not None and rms_db.size:
+        gate = noise_gate(rms_db, settings)
+        active = active & (rms_db >= gate)
+        top = float(np.max(rms_db[np.isfinite(rms_db)])) if np.isfinite(rms_db).any() else gate
+        span = max(top - gate, 1e-6)
+        level = np.clip((rms_db - gate) / span, 0.0, 1.0)
+    else:
+        level = np.ones_like(times)
+
+    step = float(np.median(np.diff(times)))
+    keep = max(1, int(np.ceil(int(np.sum(active)) / MAX_CONTOUR_POINTS)))  # thin evenly if it's long
+    segments = []
+    for start, stop in sounding_runs(active):
+        index = np.arange(start, stop, keep)
+        if index.size < 2:
+            continue
+        segments.append(
+            {
+                "start": round(float(times[index[0]]), 3),
+                "midi": [round(float(m), 2) for m in midi[index] - tuning],
+                "level": [round(float(l), 3) for l in level[index]],
+            }
+        )
+    return {"step": round(step * keep, 4), "segments": segments}
+
+
 def _notes_from_pitch(pitch: Dict[str, Any], settings: NoteSettings = DEFAULT_SETTINGS):
     """(notes, tuning offset in semitones, share of the sound that was unpitched)."""
     if not isinstance(pitch, dict):
@@ -498,6 +551,7 @@ def analyze_audio_file(
 
         {
             "melody": [{"hz": 60.0, "start": 0.0, "duration": 0.5}],  # MIDI note; seconds
+            "contour": {"step": 0.012, "segments": [...]},  # the pitch as sung, for the notes graph
             "key": "C", "mode": "major",
             "tempo": 100.0,        # 0.0 when it can't be measured
             "tuning_cents": -12,   # how far off A440 the hum was (already corrected in hz)
@@ -512,6 +566,7 @@ def analyze_audio_file(
     analysis = processor.process_audio(filepath, detect_segments=True, extract_pitch=True, extract_volume=False, extract_spectral=False)
     notes, tuning, unpitched_share = _notes_from_pitch(analysis["pitch"], settings)
     melody = [{"hz": round(n["midi"], 2), "start": round(n["start"], 3), "duration": round(n["duration"], 3)} for n in notes]
+    contour = pitch_contour(analysis["pitch"], tuning, settings)
 
     warnings = list(analysis["file"]["warnings"])
     if not melody:
@@ -523,6 +578,7 @@ def analyze_audio_file(
     key, mode = _key_from_melody(melody) if melody else _estimate_key_and_mode(processor.audio, processor.sr)
     result = {
         "melody": melody,
+        "contour": contour,
         "key": key,
         "mode": mode,
         "tempo": tempo,

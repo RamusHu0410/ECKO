@@ -30,10 +30,28 @@ export interface Note {
   duration: number
 }
 
-/** For the notes graph: the notes heard in the hum, and the ones the song's tune plays with these settings. */
+/**
+ * One run of sounding frames from the hum: the pitch as it was actually sung, `step` seconds
+ * apart from `start`. A silence ends a segment, so each one is a phrase the graph draws as an
+ * unbroken line. `level` is loudness, 0 at the noise gate and 1 at the loudest frame.
+ */
+export interface ContourSegment {
+  start: number
+  midi: number[]
+  level: number[]
+}
+
+/** The hum's pitch frame by frame (backend: app/audio/processor.pitch_contour). */
+export interface Contour {
+  step: number
+  segments: ContourSegment[]
+}
+
+/** For the notes graph: the notes heard in the hum, the ones the song's tune plays with these settings, and the hum as sung. */
 export interface SongNotes {
   sung: Note[]
   played: Note[]
+  contour?: Contour
 }
 
 const TALK_TIMEOUT_MS = 30_000

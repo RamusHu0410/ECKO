@@ -35,7 +35,7 @@ import {
  */
 export default function HomePage() {
   const studio = useStudio()
-  const { session, talk, mode, mic, talking, hasSong, reducedMotion, settings, update } = studio
+  const { session, talk, mode, mic, talking, hasSong, reducedMotion, settings } = studio
   const { phase, micProblem, uploadFailure } = session
 
   return (
@@ -174,7 +174,7 @@ export default function HomePage() {
         <AnimatePresence>
           {hasSong && (
             <motion.div key="adjustments" className="mt-8 flex w-full flex-col items-center gap-6" {...appear}>
-              <AdjustmentsPanel settings={settings} onChange={update} />
+              <AdjustmentsPanel settings={settings} onChange={studio.adjust} />
               {session.notes && <NotesGraph notes={session.notes} />}
             </motion.div>
           )}

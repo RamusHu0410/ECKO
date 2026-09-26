@@ -119,3 +119,34 @@ test('Replay plays the song from the start, every time', async ({ page }) => {
   await replay.click()
   await playsFromTheStart()
 })
+
+test('moving a fader makes the song again and the graph shows it move', async ({ page }) => {
+  const calls = await fakeBackend(page)
+  await page.goto('/')
+  await holdMic(page, () => page.waitForTimeout(1000))
+  await expect(rerecord(page)).toBeVisible({ timeout: 15_000 })
+  expect(calls.song).toBe(1)
+
+  const graph = page.locator('figure').filter({ hasText: 'Your tune' })
+  await expect(graph).toContainText('as you hummed it')
+  await expect(graph).not.toContainText('what the song plays') // the song is still the hum
+
+  const pitch = page.getByRole('slider', { name: 'Pitch' })
+  await pitch.focus()
+  for (let i = 0; i < 8; i++) await pitch.press('ArrowRight')
+
+  // one new song for the whole drag, not one per step
+  await expect.poll(() => calls.song, { timeout: 10_000 }).toBe(2)
+  await expect(graph).toContainText('what the song plays')
+})
+
+test('the notes graph never names a note', async ({ page }) => {
+  await fakeBackend(page)
+  await page.goto('/')
+  await holdMic(page, () => page.waitForTimeout(1000))
+  const graph = page.locator('figure').filter({ hasText: 'Your tune' })
+  await expect(graph).toBeVisible({ timeout: 15_000 })
+  // the drawing is a canvas, so the only text is the caption and the description a screen reader reads
+  const words = ((await graph.textContent()) ?? '') + (await graph.getByRole('img').getAttribute('aria-label'))
+  expect(words).not.toMatch(/\b[A-G]#?-?\d\b|\bMIDI\b/)
+})

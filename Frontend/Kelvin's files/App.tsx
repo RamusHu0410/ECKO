@@ -1,11 +1,24 @@
+import { lazy, Suspense } from 'react'
 import HomePage from './pages/HomePage'
 import SiteHeader from './components/SiteHeader/SiteHeader'
+import { useRoute } from './routing/useRoute'
+
+/** Only the studio is needed to start; the other two pages load when someone goes to them. */
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+const SocialPage = lazy(() => import('./pages/SocialPage'))
 
 export default function App() {
+  const route = useRoute()
+
   return (
     <>
-      <SiteHeader />
-      <HomePage />
+      <SiteHeader route={route} />
+      {route === 'home' && <HomePage />}
+      {route !== 'home' && (
+        <Suspense fallback={<main className="min-h-dvh" />}>
+          {route === 'profile' ? <ProfilePage /> : <SocialPage />}
+        </Suspense>
+      )}
     </>
   )
 }

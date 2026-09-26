@@ -1,4 +1,5 @@
 import type { DiscLook } from '../drawing/discGeometry'
+import type { NotesGraphLook } from '../drawing/drawNotesGraph'
 
 /*
  * Reads design tokens from tokens.css at runtime, for code that can't use CSS directly:
@@ -43,5 +44,15 @@ export function readDiscLook(): DiscLook {
     trace: readToken('--color-vinyl-trace'),
     label: readToken('--color-amber'),
     labelInk: readToken('--color-label-ink'),
+  }
+}
+
+/** The notes graph's colors, for its canvas drawing (on the page or as a texture in 3D). */
+export function readNotesGraphLook(): NotesGraphLook {
+  return {
+    line: readToken('--color-amber'),
+    glow: readToken('--color-amber-glow'),
+    played: readToken('--color-ink'),
+    guide: readToken('--color-ink-muted'),
   }
 }

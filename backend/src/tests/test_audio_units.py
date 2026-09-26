@@ -1,5 +1,6 @@
 """The pieces between the WAV and the accompanist, each on its own: checking the upload (intake),
-the numbers the note finder leans on (notes), and the seconds-to-beats handoff."""
+the numbers the note finder leans on (notes), the pitch contour the notes graph draws, and the
+seconds-to-beats handoff."""
 
 import numpy as np
 import pytest
@@ -8,6 +9,7 @@ import soundfile as sf
 from app.audio.handoff import DEFAULT_TEMPO, GRID_BEATS, seconds_from_engine, sensible_tempo, to_engine_melody
 from app.audio.intake import AudioInputError, inspect_wav, unique_upload_name
 from app.audio.notes import estimate_tempo_from_onsets, estimate_tuning, noise_gate
+from app.audio.processor import MAX_CONTOUR_POINTS, pitch_contour
 
 
 # --- intake --------------------------------------------------------------------------------
@@ -150,3 +152,57 @@ def test_only_a_plausible_tempo_is_used(tempo, used):
 
 def test_an_empty_melody_stays_empty():
     assert to_engine_melody([], 120.0) == []
+
+
+# --- the pitch contour the notes graph draws -------------------------------------------------
+
+
+def _pitch(hz, voiced, rms_db=None, step=0.01):
+    """A pYIN-shaped track: one frame per entry, ``step`` seconds apart."""
+    return {
+        "times": [i * step for i in range(len(hz))],
+        "frequencies": list(hz),
+        "voiced_flag": list(voiced),
+        "rms_db": list(rms_db if rms_db is not None else [-10.0] * len(hz)),
+    }
+
+
+def test_a_silence_breaks_the_line_into_two_phrases():
+    hz = [220.0] * 20 + [0.0] * 20 + [330.0] * 20
+    voiced = [True] * 20 + [False] * 20 + [True] * 20
+    contour = pitch_contour(_pitch(hz, voiced))
+    assert len(contour["segments"]) == 2
+    assert contour["segments"][1]["start"] == pytest.approx(0.4)
+
+
+def test_the_contour_keeps_the_pitch_as_it_was_sung():
+    """A scoop up into a note stays a slide, where segment_notes would flatten it to one pitch."""
+    hz = [220.0 * 2 ** (i / 39 / 12) for i in range(40)]  # a semitone, slid over 40 frames
+    contour = pitch_contour(_pitch(hz, [True] * 40))
+    sung = contour["segments"][0]["midi"]
+    assert sung == sorted(sung)  # it rises all the way, never rounded into a step
+    assert sung[-1] - sung[0] == pytest.approx(1.0, abs=0.05)
+
+
+def test_tuning_is_corrected_like_the_notes():
+    flat = pitch_contour(_pitch([220.0] * 20, [True] * 20), tuning=-0.5)
+    assert flat["segments"][0]["midi"][0] == pytest.approx(57.5, abs=0.01)
+
+
+def test_loudness_becomes_a_level_between_the_gate_and_the_loudest_frame():
+    quiet_to_loud = [-60.0] * 10 + list(range(-40, 0, 4))
+    contour = pitch_contour(_pitch([220.0] * 20, [True] * 20, quiet_to_loud))
+    levels = [l for segment in contour["segments"] for l in segment["level"]]
+    assert min(levels) >= 0.0 and max(levels) == pytest.approx(1.0)
+
+
+def test_a_long_hum_is_thinned_to_a_sendable_size():
+    frames = MAX_CONTOUR_POINTS * 3
+    contour = pitch_contour(_pitch([220.0] * frames, [True] * frames))
+    assert sum(len(s["midi"]) for s in contour["segments"]) <= MAX_CONTOUR_POINTS
+    assert contour["step"] == pytest.approx(0.03)  # three frames became one
+
+
+@pytest.mark.parametrize("pitch", [None, {}, _pitch([220.0], [True])])
+def test_nothing_to_draw_is_an_empty_contour(pitch):
+    assert pitch_contour(pitch)["segments"] == []
