@@ -11,24 +11,25 @@ try:
     import librosa
     import librosa.feature
     import librosa.onset
+    import librosa.beat
 
-    LIBROSA_AVAILABLE = True
+    LIBROSA_avaliable = True
 except ImportError:
-    LIBROSA_AVAILABLE = False
+    LIBROSA_avaliable = False
 
 try:
     from scipy.io import wavfile
 
-    SCIPY_AVAILABLE = True
+    SCIPY_avaliable = True
 except ImportError:
-    SCIPY_AVAILABLE = False
+    SCIPY_avaliable = False
 
 try:
     import soundfile as sf
 
-    SOUNDFILE_AVAILABLE = True
+    SOUNDFILE_avaliable = True
 except ImportError:
-    SOUNDFILE_AVAILABLE = False
+    SOUNDFILE_avaliable = False
 
 # Configure logging to output to console
 logging.basicConfig(
@@ -87,11 +88,11 @@ class AudioProcessor:
     def _check_dependencies(self):
         """Check which audio libraries are available."""
         available = []
-        if LIBROSA_AVAILABLE:
+        if LIBROSA_avaliable:
             available.append("librosa")
-        if SCIPY_AVAILABLE:
+        if SCIPY_avaliable:
             available.append("scipy")
-        if SOUNDFILE_AVAILABLE:
+        if SOUNDFILE_avaliable:
             available.append("soundfile")
 
         if not available:
@@ -124,11 +125,11 @@ class AudioProcessor:
             raise FileNotFoundError(error_msg)
 
         # Try different libraries in order of preference
-        if LIBROSA_AVAILABLE:
+        if LIBROSA_avaliable:
             audio, sr = self._load_with_librosa(filepath)
-        elif SOUNDFILE_AVAILABLE:
+        elif SOUNDFILE_avaliable:
             audio, sr = self._load_with_soundfile(filepath)
-        elif SCIPY_AVAILABLE:
+        elif SCIPY_avaliable:
             audio, sr = self._load_with_scipy(filepath)
         else:
             error_msg = "No audio processing library available. Install librosa, soundfile, or scipy."
@@ -162,7 +163,7 @@ class AudioProcessor:
             audio = np.mean(audio, axis=1)
             self._debug_print(f"{audio.shape}")
         # Resample if needed
-        if sr != self.target_sr and LIBROSA_AVAILABLE:
+        if sr != self.target_sr and LIBROSA_avaliable:
             self._debug_print(f"Resampling from {sr}Hz to {self.target_sr}Hz")
             audio = librosa.resample(audio, orig_sr=sr, target_sr=self.target_sr)
             sr = self.target_sr
@@ -193,7 +194,7 @@ class AudioProcessor:
 
         # Resample if needed (requires librosa)
         if sr != self.target_sr:
-            if LIBROSA_AVAILABLE:
+            if LIBROSA_avaliable:
                 self._debug_print(f"Resampling from {sr}Hz to {self.target_sr}Hz")
                 audio = librosa.resample(audio, orig_sr=sr, target_sr=self.target_sr)
                 sr = self.target_sr
@@ -213,7 +214,7 @@ class AudioProcessor:
         """
         self._debug_print(f"Getting audio info for: {filepath}")
 
-        if SOUNDFILE_AVAILABLE:
+        if SOUNDFILE_avaliable:
             info = sf.info(filepath)
             result = {
                 "duration": info.duration,
@@ -223,7 +224,7 @@ class AudioProcessor:
                 "format": info.format,
                 "subtype": info.subtype,
             }
-        elif SCIPY_AVAILABLE:
+        elif SCIPY_avaliable:
             sr, audio = wavfile.read(filepath)
             duration = len(audio) / sr
             channels = 1 if len(audio.shape) == 1 else audio.shape[1]
@@ -237,7 +238,7 @@ class AudioProcessor:
             }
         else:
             # Fallback: load with librosa to get info
-            if LIBROSA_AVAILABLE:
+            if LIBROSA_avaliable:
                 audio, sr = librosa.load(filepath, sr=None, mono=False)
                 duration = (
                     len(audio) / sr if len(audio.shape) == 1 else audio.shape[1] / sr
@@ -279,7 +280,7 @@ class AudioProcessor:
             "PROCESS",
         )
 
-        if not LIBROSA_AVAILABLE:
+        if not LIBROSA_avaliable:
             msg = "librosa not available, cannot detect sound segments"
             logger.warning(msg)
             self._debug_print(f"WARNING: {msg}", "WARNING")
@@ -344,7 +345,7 @@ class AudioProcessor:
         """
         self._debug_print(f"Extracting pitch (fmin={fmin}Hz, fmax={fmax}Hz)", "PROCESS")
 
-        if not LIBROSA_AVAILABLE:
+        if not LIBROSA_avaliable:
             msg = "librosa not available, cannot extract pitch"
             logger.warning(msg)
             self._debug_print(f"WARNING: {msg}", "WARNING")
@@ -387,7 +388,9 @@ class AudioProcessor:
         result = {
             "frequencies": f0.tolist(),
             "times": times.tolist(),
-            "voiced_flag": voiced_flag.tolist(),
+            # ``ndarray.tolist()`` can preserve NumPy boolean scalar types in
+            # some NumPy versions; convert explicitly for JSON API consumers.
+            "voiced_flag": [bool(flag) for flag in voiced_flag],
             "voiced_probabilities": voiced_probs.tolist(),
             "mean_hz": float(np.nanmean(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
             "median_hz": float(np.nanmedian(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
@@ -413,7 +416,7 @@ class AudioProcessor:
         """
         self._debug_print("Extracting volume envelope (RMS energy)", "PROCESS")
 
-        if not LIBROSA_AVAILABLE:
+        if not LIBROSA_avaliable:
             msg = "librosa not available, cannot extract volume envelope"
             logger.warning(msg)
             self._debug_print(f"WARNING: {msg}", "WARNING")
@@ -482,7 +485,7 @@ class AudioProcessor:
         """
         self._debug_print("Extracting spectral features", "PROCESS")
 
-        if not LIBROSA_AVAILABLE:
+        if not LIBROSA_avaliable:
             return {}
 
         # Spectral centroid (brightness)
@@ -582,13 +585,15 @@ class AudioProcessor:
         # Load audio
         load_start = time.time()
         audio, sr = self.load_wav(filepath)
+        self.audio = audio
+        self.sr = sr
         info = self.get_audio_info(filepath)
         self._debug_print(f"Load + info took {time.time() - load_start:.3f}s")
 
         # Basic analysis
         duration = len(audio) / sr
-        rms_energy = np.sqrt(np.mean(audio**2))
-        max_amplitude = np.max(np.abs(audio))
+        rms_energy: float = np.sqrt(np.mean(audio**2))
+        max_amplitude: float = np.max(np.abs(audio))
 
         # Build results dictionary with consistent structure
         results = {
@@ -664,8 +669,79 @@ class AudioProcessor:
 
 
 # =============================================================================
-# PUBLIC API FUNCTIONS - Import these from other files
+# PUBLIC API FUNCTIONS
 # =============================================================================
+
+
+_PITCH_CLASS_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+_MAJOR_PROFILE = np.array(
+    [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+)
+_MINOR_PROFILE = np.array(
+    [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+)
+
+
+def _estimate_key_and_mode(audio: np.ndarray, sr: int) -> tuple[str, str]:
+    """Estimate the tonic and mode from a chroma profile."""
+    if not LIBROSA_avaliable or audio.size == 0 or np.allclose(audio, 0):
+        return "C", "major"
+
+    profile = np.mean(librosa.feature.chroma_cqt(y=audio, sr=sr), axis=1)
+    if not np.any(profile):
+        return "C", "major"
+
+    candidates = [
+        (float(np.dot(profile, np.roll(template, tonic))), tonic, mode)
+        for template, mode in ((_MAJOR_PROFILE, "major"), (_MINOR_PROFILE, "minor"))
+        for tonic in range(12)
+    ]
+    _, tonic, mode = max(candidates, key=lambda candidate: candidate[0])
+    return _PITCH_CLASS_NAMES[tonic], mode
+
+
+def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
+    """Estimate tempo in BPM, returning 0.0 when it cannot be determined."""
+    if not LIBROSA_avaliable or audio.size == 0 or np.allclose(audio, 0):
+        return 0.0
+    try:
+        tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
+        tempo_arr = np.asarray(tempo).reshape(-1)
+        if tempo_arr.size == 0:
+            return 0.0
+        return round(float(tempo_arr[0]), 2)
+    except Exception:
+        return 0.0
+
+
+def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
+    """Convert detected sound segments into the MIDI-note API melody format."""
+    pitch = analysis.get("pitch", {})
+    if not isinstance(pitch, dict):
+        return []
+    times = np.asarray(pitch.get("times", []), dtype=float)
+    frequencies = np.asarray(pitch.get("frequencies", []), dtype=float)
+    voiced = np.asarray(pitch.get("voiced_flag", []), dtype=bool)
+    melody = []
+
+    for segment in analysis.get("segments", []):
+        start, end = float(segment["start"]), float(segment["end"])
+        values = frequencies[(times >= start) & (times <= end) & voiced]
+        values = values[np.isfinite(values) & (values > 0)]
+        if values.size:
+            frequency_hz = float(np.median(values))
+            melody.append(
+                {
+                    # The accompaniment API historically calls this field ``hz``,
+                    # but its public contract uses MIDI note numbers (60 = C4).
+                    "hz": round(float(librosa.hz_to_midi(frequency_hz)), 2)
+                    if LIBROSA_avaliable
+                    else round(69 + 12 * np.log2(frequency_hz / 440.0), 2),
+                    "start": round(start, 3),
+                    "duration": round(float(segment["duration"]), 3),
+                }
+            )
+    return melody
 
 
 def analyze_audio_file(
@@ -677,87 +753,39 @@ def analyze_audio_file(
     extract_spectral: bool = True,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """
-    Main entry point: Analyze a WAV file and return a structured dictionary.
+    """Analyze a WAV file and return melody, key, mode, and tempo.
 
-    This is the function you should import and call from other Python files.
+    The returned payload is JSON-ready and has this shape::
 
-    Args:
-        filepath: Path to the WAV file
-        target_sr: Target sample rate (default 22050 Hz)
-        detect_segments: Detect sound/silence segments
-        extract_pitch: Extract fundamental frequency (pitch)
-        extract_volume: Extract volume envelope (RMS)
-        extract_spectral: Extract spectral features
-        debug: Enable debug output
-
-    Returns:
-        Dictionary with this structure:
         {
-            "file": {
-                "path": str,
-                "duration": float,
-                "sample_rate": int,
-                "num_samples": int,
-                "rms_energy": float,
-                "max_amplitude": float,
-                "is_silent": bool,
-                "total_sound_duration": float,
-                "silence_ratio": float,
-                "num_segments": int,
-                "info": {...}
-            },
-            "segments": [
-                {"start": float, "end": float, "duration": float},
-                ...
-            ],
-            "pitch": {
-                "frequencies": List[float],
-                "times": List[float],
-                "voiced_flag": List[bool],
-                "voiced_probabilities": List[float],
-                "mean_hz": float,
-                "median_hz": float,
-                "min_hz": float,
-                "max_hz": float,
-                "voiced_duration": float,
-                "total_frames": int,
-                "voiced_frames": int
-            },
-            "volume": {
-                "rms_values": List[float],
-                "rms_db": List[float],
-                "times": List[float],
-                "mean_rms": float,
-                "max_rms": float,
-                "mean_db": float,
-                "max_db": float,
-                "dynamic_range_db": float
-            },
-            "spectral": {
-                "spectral_centroid": {"values": [], "times": [], "mean": float, "std": float},
-                "spectral_rolloff": {"values": [], "mean": float, "std": float},
-                "spectral_bandwidth": {"values": [], "mean": float, "std": float},
-                "zero_crossing_rate": {"values": [], "mean": float, "std": float}
-            },
-            "processing_time": float
+            "melody": [{"hz": float, "start": float, "duration": float}],
+            "key": "C",
+            "mode": "major",
+            "tempo": 100.0,
         }
 
-    Example:
-        from backend.src.app.audio.processor import analyze_audio_file
-
-        result = analyze_audio_file("path/to/audio.wav")
-        print(result["pitch"]["mean_hz"])
-        print(result["segments"])
+    ``hz`` follows the accompaniment API's established convention: it contains
+    a MIDI note number (for example, 60 for middle C). Silence and unpitched
+    segments are omitted from ``melody``.
     """
     processor = AudioProcessor(target_sr=target_sr, debug=debug)
-    return processor.process_audio(
+    analysis = processor.process_audio(
         filepath=filepath,
         detect_segments=detect_segments,
         extract_pitch=extract_pitch,
         extract_volume=extract_volume,
         extract_spectral=extract_spectral,
     )
+    # Reuse audio already loaded by process_audio instead of loading twice
+    audio = processor.audio
+    sr = processor.sr
+    key, mode = _estimate_key_and_mode(audio, sr)
+    return {
+        "melody": _build_melody(analysis),
+        "key": key,
+        "mode": mode,
+        "tempo": _estimate_tempo(audio, sr),
+    }
 
 
 def quick_analyze(filepath: str, target_sr: int = 22050) -> Dict[str, Any]:
@@ -916,7 +944,6 @@ def extract_notes(
                 f"  Note {i}: {n['start']:.2f}s-{n['end']:.2f}s "
                 f"dur={n['duration']:.2f}s vol={n['volume']:.4f} pitch={n['pitch_hz']:.1f}Hz"
             )
-    generate_accompaniment(notes)
     return notes
 
 

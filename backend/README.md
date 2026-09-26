@@ -6,8 +6,6 @@
 uv run flask --app src/app:create_app run --port 8000
 
 
-
-
 Start the server (terminal 1)
 bash
 
@@ -74,7 +72,6 @@ One tip: since timing is in beats and it's one chord per bar (4 beats), a melody
 ---
 
 # App data: Auth0 + TigerData
-
 The backend now has an authenticated app layer alongside the accompaniment
 engine: **Auth0** for identity and **TigerData (PostgreSQL)** for users,
 recordings, and the discussion hub (posts / comments / likes).
@@ -117,4 +114,12 @@ uv run pytest tests -v      # runs against sqlite + a stubbed Auth0 verifier
 - `docs/DATABASE.md` — TigerData connection, schema, migrations.
 - `docs/API.md` — full endpoint reference.
 
+---
 
+## Running Tests
+
+The test suite is located in `src/tests/` and covers the application factory, configuration, audio processor, and API routes.
+
+### Prerequisites
+
+Make sure test dependencies are installed:

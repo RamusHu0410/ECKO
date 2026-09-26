@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, request, send_file, current_app
 from accompanist.generate import generate_accompaniment
 from accompanist.music.styles import STYLES
 
-bp = Blueprint("accompaniment", __name__, url_prefix="/accompaniment")
+bp = Blueprint("accompaniment", __name__)
 
 
 @bp.route("/styles", methods=["GET"])

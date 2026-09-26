@@ -1,0 +1,5 @@
+# Secrets and local-only files for the talk lab
+.env
+.venv/
+__pycache__/
+.pytest_cache/
