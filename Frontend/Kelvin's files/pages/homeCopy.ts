@@ -4,6 +4,7 @@ import type { MicProblem } from '../hooks/useRecorder'
 import type { UploadFailureKind } from '../api/uploadHum'
 import type { GenerateFailureKind } from '../api/generateAccompaniment'
 import type { Mode } from '../hooks/useMode'
+import type { TalkPhase, TalkProblem } from '../hooks/useTalk'
 
 export function discLabel(phase: SessionPhase, paused: boolean): string {
   switch (phase) {
@@ -19,17 +20,40 @@ export function discLabel(phase: SessionPhase, paused: boolean): string {
   }
 }
 
-export const MIC_LABEL = 'Microphone. Hold it, or hold the space bar, to hum for up to 10 seconds.'
+export function micLabel(mode: Mode): string {
+  return mode === 'talk'
+    ? 'Microphone. Hold it, or hold the space bar, and say how to change the song.'
+    : 'Microphone. Hold it, or hold the space bar, to hum for up to 10 seconds.'
+}
 
 export function micCaption(phase: SessionPhase, mode: Mode, holding: boolean, secondsLeft: number): string {
-  if (mode === 'talk') return 'Talk mode is coming soon. Switch to HUM to hum a tune.'
   if (phase === 'requesting') return 'Allow the microphone'
   if (phase === 'recording') {
-    const clock = `0:${String(secondsLeft).padStart(2, '0')}`
-    return holding ? `${clock} · release to stop` : `${clock} · tap the mic to stop`
+    return holding ? `${clock(secondsLeft)} · release to stop` : `${clock(secondsLeft)} · tap the mic to stop`
   }
+  if (mode === 'talk') return phase === 'idle' ? 'Hum a tune first, then talk to change it.' : ''
   if (phase === 'idle') return 'Hold to hum'
   return ''
+}
+
+/** Under the mic in talk mode, once there's a song to change. */
+export function talkCaption(phase: TalkPhase, reply: string, problem: TalkProblem | null, secondsLeft: number): string {
+  if (phase === 'listening') return `${clock(secondsLeft)} · release when you're done`
+  if (phase === 'thinking') return 'Thinking…'
+  if (phase === 'remaking') return 'Pressing the new version…'
+  if (problem) return TALK_PROBLEMS[problem]
+  return reply || 'Hold to talk. Try “make it faster”.'
+}
+
+const TALK_PROBLEMS: Record<TalkProblem, string> = {
+  mic: 'The microphone didn’t start. Allow it, then try again.',
+  short: 'Keep holding while you talk.',
+  failed: 'That didn’t reach ECKO. Try again in a moment.',
+  song: 'The new version couldn’t be made. Your song is unchanged.',
+}
+
+function clock(secondsLeft: number): string {
+  return `0:${String(secondsLeft).padStart(2, '0')}`
 }
 
 export const ANNOUNCEMENTS: Partial<Record<SessionPhase, string>> = {

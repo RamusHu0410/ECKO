@@ -1,7 +1,7 @@
 import GlassFader from '../GlassFader/GlassFader'
-import type { SongSettings } from '../../hooks/useSongSettings'
+import type { Slider, SongSettings } from '../../hooks/useSongSettings'
 
-const FADERS: { name: keyof SongSettings; label: string; low: string; high: string }[] = [
+const FADERS: { name: Slider; label: string; low: string; high: string }[] = [
   { name: 'emotion', label: 'Emotion', low: 'Moody', high: 'Bright' },
   { name: 'speed', label: 'Speed', low: 'Slower', high: 'Faster' },
   { name: 'pitch', label: 'Pitch', low: 'Lower', high: 'Higher' },

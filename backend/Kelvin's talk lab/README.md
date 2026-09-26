@@ -1,5 +1,7 @@
 # Kelvin's talk lab
 
+> **Merged.** Talk mode now runs inside the real website: the backend's `src/app/talk/` package and `src/app/routes/talk.py` blueprint, and the frontend's `hooks/useTalk.ts`. This folder stays as a reference and test bench with its own `.venv`, `.env` and live tests; the website doesn't need it.
+
 A stand-alone prototype of ECKO's **talk mode**. After a song is made, you change it by voice or by typing ("turn this into rock", "make it faster and lighter"). The lab understands the command with Gemini, updates the song settings, and a warm voice (ElevenLabs) answers.
 
 It runs on its own. It is **not** registered with the main Flask app and touches no backend or frontend files, so it can be tested safely and merged later.

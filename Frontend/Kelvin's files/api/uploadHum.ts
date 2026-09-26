@@ -1,5 +1,5 @@
 /*
- * The only place the frontend talks to the backend.
+ * Sends a hum to the backend (talk mode's calls, and making the song, are in talk.ts).
  *
  * Contract (Flask, backend/src/app/routes/main.py): POST /upload, multipart form data with the
  * recording in a field named "file" whose filename ends in .wav, at most 50 MB.
@@ -13,7 +13,7 @@ import type { MelodyNote } from './generateAccompaniment'
 
 const UPLOAD_URL = '/api/upload'
 /** Backend work can be slow; give up after this long. */
-const TIMEOUT_MS = 90_000
+export const TIMEOUT_MS = 90_000
 
 /** What POST /upload returns on success. */
 export interface HumUpload {
@@ -108,7 +108,7 @@ async function toWav(recording: Blob): Promise<Blob> {
   }
 }
 
-function toNetworkFailure(error: unknown): Error {
+export function toNetworkFailure(error: unknown): Error {
   if (error instanceof DOMException && error.name === 'AbortError') return error // cancelled on purpose
   if (error instanceof DOMException && error.name === 'TimeoutError') {
     return new UploadError('timeout', `No reply from the backend within ${TIMEOUT_MS / 1000} seconds.`)
@@ -116,7 +116,7 @@ function toNetworkFailure(error: unknown): Error {
   return new UploadError('unreachable', `The request never reached the backend: ${String(error)}`)
 }
 
-function toHttpFailure(status: number, contentType: string, body: string): UploadError {
+export function toHttpFailure(status: number, contentType: string, body: string): UploadError {
   const reply = contentType.includes('application/json') ? (parseJson(body) as { error?: string; details?: string } | null) : null
   const said = [reply?.error, reply?.details].filter(Boolean).join(': ') || body.slice(0, 200) || 'no details'
   if (status === 413) return new UploadError('too-large', `The backend refused the file as too large (413).`)

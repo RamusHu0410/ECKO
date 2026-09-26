@@ -1,30 +1,29 @@
 import { useCallback, useState } from 'react'
 
-/** Each setting runs from 0 (Moody, Slower, Lower) to 1 (Bright, Faster, Higher). */
-export interface SongSettings {
-  emotion: number
-  speed: number
-  pitch: number
+/** The three faders. Each runs from 0 (Moody, Slower, Lower) to 1 (Bright, Faster, Higher). */
+export type Slider = 'emotion' | 'speed' | 'pitch'
+
+export interface SongSettings extends Record<Slider, number> {
+  /** A genre asked for in talk mode ("rock", "jazz"), or null. No fader shows it. */
+  style: string | null
+  /** Instruments or effects asked for in talk mode ("strings"). No fader shows them. */
+  extras: string[]
 }
 
-const MIDDLE: SongSettings = { emotion: 0.5, speed: 0.5, pitch: 0.5 }
+const SLIDERS: Slider[] = ['emotion', 'speed', 'pitch']
+const MIDDLE: SongSettings = { emotion: 0.5, speed: 0.5, pitch: 0.5, style: null, extras: [] }
 
 /**
- * How the generated song should feel. One setter serves the faders now and talk mode later:
- * pass any of the values and the rest stay as they are.
- *
- * TODO(settings): send these with the hum. POST /upload only takes the WAV today; the new
- * POST /accompaniment/generate takes style, tempo and mode, which these could map onto.
+ * How the generated song should feel. The backend makes the song with these (POST /talk/song).
+ * One setter serves the faders and talk mode: pass any of the values and the rest stay as they are.
  */
 export function useSongSettings() {
   const [settings, setSettings] = useState<SongSettings>(MIDDLE)
 
   const update = useCallback((changes: Partial<SongSettings>) => {
     setSettings((current) => {
-      const next = { ...current }
-      for (const [name, value] of Object.entries(changes) as [keyof SongSettings, number][]) {
-        next[name] = Math.min(1, Math.max(0, value))
-      }
+      const next = { ...current, ...changes }
+      for (const name of SLIDERS) next[name] = Math.min(1, Math.max(0, next[name]))
       return next
     })
   }, [])

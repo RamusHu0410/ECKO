@@ -1,24 +1,29 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import Turntable from '../components/Turntable/Turntable'
 import Microphone from '../components/Microphone/Microphone'
+import ModeButtons from '../components/Turntable/ModeButtons'
 import NoteStream from '../components/NoteStream/NoteStream'
 import AdjustmentsPanel from '../components/AdjustmentsPanel/AdjustmentsPanel'
+import NotesGraph from '../components/NotesGraph/NotesGraph'
 import GlassButton from '../components/GlassButton/GlassButton'
 import GlassMessage from '../components/GlassMessage/GlassMessage'
 import { useRecordSession } from '../hooks/useRecordSession'
 import { useMode } from '../hooks/useMode'
 import { useSongSettings } from '../hooks/useSongSettings'
 import { useHoldToRecord } from '../hooks/useHoldToRecord'
+import { useSongPlayer } from '../hooks/useSongPlayer'
+import { useTalk } from '../hooks/useTalk'
 import { appear } from '../design/motion'
 import {
   ACCOMPANIMENT_HELP,
   ANNOUNCEMENTS,
   MIC_HELP,
-  MIC_LABEL,
   UPLOAD_FAILED_TITLE,
   UPLOAD_HELP,
   discLabel,
   micCaption,
+  micLabel,
+  talkCaption,
 } from './homeCopy'
 
 /**
@@ -29,25 +34,33 @@ import {
  */
 export default function HomePage() {
   const reducedMotion = useReducedMotion() ?? false
-  const session = useRecordSession(reducedMotion)
-  const { mode, setMode } = useMode()
   const { settings, update } = useSongSettings()
+<<<<<<< HEAD
   const { phase, micProblem, uploadFailure, accompanimentFailure } = session
+=======
+  const session = useRecordSession(reducedMotion, settings)
+  const { mode, setMode } = useMode()
+  const { phase, micProblem, uploadFailure } = session
+  const talk = useTalk({ settings, update, remakeSong: session.remakeSong })
+  const talking = mode === 'talk' && phase === 'ready'
+  const canTalk = talking && !talk.busy
+
+  // the song plays while the record turns, and waits while someone talks to it
+  useSongPlayer(session.song, phase === 'ready' && !session.paused && !talk.busy)
+>>>>>>> fe663df (bugs fixed, elevenlabs)
 
   const hold = useHoldToRecord({
-    enabled: mode === 'talk' || phase === 'idle' || phase === 'recording',
+    enabled: mode === 'talk' ? canTalk : phase === 'idle' || phase === 'recording',
     onPress: () => {
-      if (mode === 'talk') {
-        // TODO(talk): start a spoken conversation here. It will listen, then shape the song by
-        // calling useSongSettings().update({ ... }) with what the person asked for.
-        return
-      }
-      if (phase === 'idle') session.record()
+      // talk mode: listen, then the faders move and the song is remade from the same hum
+      if (mode === 'talk') void talk.listen()
+      else if (phase === 'idle') session.record()
     },
     // released before the mic was ready (e.g. during the permission prompt): the recording
     // keeps going and a tap on the mic stops it
     onRelease: () => {
-      if (phase === 'recording') session.stopRecording()
+      if (mode === 'talk') talk.stop()
+      else if (phase === 'recording') session.stopRecording()
     },
   })
 
@@ -76,7 +89,6 @@ export default function HomePage() {
             onTap: session.tap,
           }}
           tonearm={{ onRecord: phase === 'ready', reducedMotion }}
-          modes={{ mode, onChange: setMode }}
           topDown={adjustable}
         />
 
@@ -121,19 +133,28 @@ export default function HomePage() {
           </AnimatePresence>
         </div>
 
+        {/* the mode keys sit left of the mic and Re-record right of it, both measured from the mic's
+            centre line, so a long caption under the mic doesn't push them around */}
         <div className="relative">
+          <div className="absolute top-1/4 right-[calc(50%+var(--mic-size)*0.55+1rem)]">
+            <ModeButtons mode={mode} onChange={setMode} />
+          </div>
           <Microphone
             pointerHandlers={hold.pointerHandlers}
-            recording={recording}
-            enabled={mode === 'talk' || phase === 'idle' || phase === 'requesting' || recording}
-            label={MIC_LABEL}
-            caption={micCaption(phase, mode, hold.holding, session.secondsLeft)}
+            recording={recording || talk.phase === 'listening'}
+            enabled={mode === 'talk' ? canTalk : phase === 'idle' || phase === 'requesting' || recording}
+            label={micLabel(mode)}
+            caption={
+              talking
+                ? talkCaption(talk.phase, talk.reply, talk.problem, talk.secondsLeft)
+                : micCaption(phase, mode, hold.holding, session.secondsLeft)
+            }
           >
             <NoteStream active={recording} level={session.canvas.liveLevel} />
           </Microphone>
           <AnimatePresence>
             {phase === 'ready' && (
-              <div className="absolute top-1/3 left-full ml-4">
+              <div className="absolute top-1/3 left-[calc(50%+var(--mic-size)*0.55+1rem)]">
                 <GlassButton key="rerecord" onClick={session.reset} {...appear}>
                   Re-record
                 </GlassButton>
@@ -143,13 +164,14 @@ export default function HomePage() {
         </div>
 
         <p className="sr-only" aria-live="polite">
-          {ANNOUNCEMENTS[phase] ?? ''}
+          {(talking && talk.reply) || ANNOUNCEMENTS[phase] || ''}
         </p>
 
         <AnimatePresence>
           {adjustable && (
-            <motion.div key="adjustments" className="mt-8 w-full flex justify-center" {...appear}>
+            <motion.div key="adjustments" className="mt-8 flex w-full flex-col items-center gap-6" {...appear}>
               <AdjustmentsPanel settings={settings} onChange={update} />
+              {session.notes && <NotesGraph notes={session.notes} />}
             </motion.div>
           )}
         </AnimatePresence>
