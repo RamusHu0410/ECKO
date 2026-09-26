@@ -77,7 +77,7 @@ def main() -> int:
         melody,
         midi_path,
         style=style,
-        allow_edit_melody=True,  # apply jazz/pentatonic melody styling in the demo
+        allow_edit_melody=False,  # leave the melody line untouched by default
         instrument=instrument,
         modulate_to_key=modulate_key,
         modulate_to_mode=modulate_mode,

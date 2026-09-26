@@ -15,15 +15,15 @@ from accompanist.music.styles import STYLES
 from accompanist.music.voice_leading import lead_voices
 
 DEFAULT_PROGRAM = 0       # Acoustic Grand Piano (accompaniment)
-DEFAULT_VELOCITY = 127    # loud (max)
-# Melody and accompaniment play at the same, full volume.
+DEFAULT_VELOCITY = 100    # accompaniment base — loud, but under the melody
+# Melody sits clearly on top, a bit louder than the accompaniment.
 MELODY_PROGRAM = 0        # keep piano timbre; adjust if you want a lead voice
-MELODY_VELOCITY = 127     # same as the accompaniment — equal, loud
+MELODY_VELOCITY = 127     # loudest — the melody line leads
 ACCOMP_VELOCITY_SCALE = 1.0
 # Force every accompaniment note to this fixed velocity so per-style dynamic
-# reductions don't make it quieter than the melody. Set to None to keep each
-# style's own internal dynamics.
-ACCOMP_FIXED_VELOCITY = 127
+# reductions stay consistent, while sitting below the melody. Set to None to
+# keep each style's own internal dynamics.
+ACCOMP_FIXED_VELOCITY = 100
 
 # Named General MIDI instruments (program numbers) for convenience.
 INSTRUMENTS: dict[str, int] = {

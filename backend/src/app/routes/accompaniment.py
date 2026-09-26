@@ -57,11 +57,10 @@ def generate():
         return jsonify({"error": "format must be 'midi', 'wav', or 'json'."}), 400
 
     # allow_edit_melody: whether the engine may alter the melody itself.
-    # Accepts "yes"/"no" (or true/false). Default is "no".
-    # NOTE: forced ON for now so the jazz melody styling is applied.
+    # Accepts "yes"/"no" (or true/false). Default is "no" — the melody line is
+    # left exactly as given unless the caller explicitly opts in.
     _raw_allow = data.get("allow_edit_melody", "no")
     allow_edit_melody = str(_raw_allow).strip().lower() in ("yes", "true", "1")
-    allow_edit_melody = True  # TODO: temporary override — remove to honor input
 
     # instrument: named GM instrument for playback (piano, guitar, ...).
     instrument = data.get("instrument", "piano")
