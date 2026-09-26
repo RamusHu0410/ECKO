@@ -22,8 +22,11 @@ export default function App() {
         stream.getTracks().forEach((track) => track.stop())
         const wav = await toWav(new Blob(chunks, { type: recorder.mimeType }))
 
-        // send it to the backend, which saves it as backend/recordings/recording.wav
-        fetch('/upload', { method: 'POST', body: wav })
+        // send it to the Flask backend as a form upload, in a field named 'file'
+        const form = new FormData()
+        form.append('file', wav, 'recording.wav')
+        const res = await fetch('/upload', { method: 'POST', body: form })
+        console.log(res.status, await res.text()) // the backend's reply, shown in the browser console
       }
       recorder.start()
       recorderRef.current = recorder
