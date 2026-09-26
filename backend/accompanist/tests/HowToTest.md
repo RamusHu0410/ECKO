@@ -64,3 +64,16 @@ cd /Users/ramushu/dev/ECKO/ECKO/backend/accompanist
 .venv/bin/python make_test_wav.py asian_folk folk.wav
 afplay jazz.wav
 afplay folk.wav
+
+
+ramushu@Ramus-MacBook-Air accompanist % >....                                                 
+.venv/bin/python -c "
+import pretty_midi
+for tag,f in [('base','base.mid'),('modG','modG.mid')]:
+    pm=pretty_midi.PrettyMIDI(f)
+    print(tag,'acc:',sorted({n.pitch for n in pm.instruments[0].notes})[:6])
+"
+echo "--- playing base (C) ---"; afplay base.wav
+echo "--- playing modulated (G) ---"; afplay modG.wav
+echo done
+rm -f base.mid base.wav base_original.mid base_original.wav modG.mid modG.wav modG_original.mid modG_original.wav

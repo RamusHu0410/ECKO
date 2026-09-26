@@ -121,10 +121,12 @@ def generate():
                 "error": "WAV rendering unavailable (FluidSynth/soundfont missing).",
                 "warnings": result.warnings,
             }), 503
+        # Not an attachment: the frontend streams this straight into an
+        # <audio> element / Web Audio for playback.
         return send_file(
             result.wav_path,
             mimetype="audio/wav",
-            as_attachment=True,
+            as_attachment=False,
             download_name=f"accompaniment_{stem}.wav",
         )
 

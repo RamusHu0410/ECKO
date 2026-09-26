@@ -1,3 +1,5 @@
+ I add a frontend API function generateAccompaniment() that POSTs the melody to /api/accompaniment/generate with format=wav, receives the WAV bytes as a Blob, and returns an object-URL the browser can play with new Audio() or an <audio> element.
+
 # How to connect and run backend
 
 ## How to run backend flask python server
@@ -68,3 +70,51 @@ format=json → metadata (key, mode, progression) — no file
 format=midi → a .mid file, Content-Type: audio/midi (accompaniment track + melody track)
 format=wav → a .wav file, Content-Type: audio/wav
 One tip: since timing is in beats and it's one chord per bar (4 beats), a melody spanning only a few beats gives a 1-chord progression. Use an 8-bar melody (notes with start from 0 up to ~31) if you want to see a full C F G C Am F G C-style progression.
+
+---
+
+# App data: Auth0 + TigerData
+
+The backend now has an authenticated app layer alongside the accompaniment
+engine: **Auth0** for identity and **TigerData (PostgreSQL)** for users,
+recordings, and the discussion hub (posts / comments / likes).
+
+## One-time setup
+
+1. Copy the env template and fill it in:
+   ```bash
+   cp .env.example .env       # set DATABASE_URL, AUTH0_DOMAIN, AUTH0_API_AUDIENCE
+   ```
+2. Verify the database connection:
+   ```bash
+   cd src
+   uv run python -m app.db_utils        # -> Database connection successful
+   ```
+3. Create the schema on your Tiger Cloud service:
+   ```bash
+   cd src
+   export FLASK_APP="app:create_app"
+   uv run flask db upgrade
+   ```
+
+## Run
+
+```bash
+cd src
+../.venv/bin/python -c "from app import create_app; create_app('development').run(host='127.0.0.1', port=8000)"
+```
+
+## Test the app layer
+
+```bash
+cd src
+uv run pytest tests -v      # runs against sqlite + a stubbed Auth0 verifier
+```
+
+## Docs
+
+- `docs/AUTH.md` — Auth0 tenant setup, JWT validation, scopes.
+- `docs/DATABASE.md` — TigerData connection, schema, migrations.
+- `docs/API.md` — full endpoint reference.
+
+

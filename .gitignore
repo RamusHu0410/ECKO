@@ -1,2 +1,15 @@
 .aider*
 *.pyc
+
+# Environments & secrets
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+dev.db
+
+# Python caches
+__pycache__/
+.pytest_cache/
