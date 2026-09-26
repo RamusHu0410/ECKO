@@ -2,6 +2,7 @@
 import type { SessionPhase } from '../hooks/useRecordSession'
 import type { MicProblem } from '../hooks/useRecorder'
 import type { UploadFailureKind } from '../api/uploadHum'
+import type { GenerateFailureKind } from '../api/generateAccompaniment'
 import type { Mode } from '../hooks/useMode'
 
 export function discLabel(phase: SessionPhase, paused: boolean): string {
@@ -58,6 +59,16 @@ export const MIC_HELP: Record<MicProblem, { title: string; body: string }> = {
     title: 'The microphone didn’t start',
     body: 'Another app may be using it. Close that app, then try again.',
   },
+}
+
+/** What went wrong composing the accompaniment, in plain words. Non-blocking: the record still plays, just silently. */
+export const ACCOMPANIMENT_HELP: Record<GenerateFailureKind, string> = {
+  unreachable: 'The ECKO server isn’t answering, so there’s no sound yet.',
+  timeout: 'Composing the song took too long, so there’s no sound yet.',
+  unavailable: 'Audio rendering isn’t set up on the server yet, so there’s no sound yet.',
+  rejected: 'The server couldn’t compose a song from this hum.',
+  server: 'The server ran into a problem composing your song.',
+  unexpected: 'Something unexpected happened composing your song.',
 }
 
 export const UPLOAD_FAILED_TITLE = 'We couldn’t press your record'
