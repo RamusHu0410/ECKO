@@ -15,6 +15,7 @@ from src.app.audio.processor import (
     AudioProcessor,
     extract_notes,
     analyze_audio_file,
+    _build_melody,
 )
 
 SR = 22050
@@ -101,7 +102,12 @@ class TestMelodyFidelity:
         sequence = [(261.63, 0.4), (329.63, 0.4), (392.00, 0.4)]  # C4, E4, G4
         _write_tone_sequence(path, sequence)
 
-        notes = extract_notes(str(path), target_sr=SR, min_note_duration=0.05)
+        # skip_first_note=False: this test is about capturing every real note
+        # in a clean sequence, a different concern from the mic-pop-skipping
+        # heuristic (covered separately in TestSkipFirstNote below).
+        notes = extract_notes(
+            str(path), target_sr=SR, min_note_duration=0.05, skip_first_note=False
+        )
 
         assert len(notes) == len(sequence), (
             f"expected {len(sequence)} distinct notes, got {len(notes)}: {notes}"
@@ -116,7 +122,9 @@ class TestMelodyFidelity:
         audio = _write_tone_sequence(path, sequence, gap=gap)
         total_duration = len(audio) / SR
 
-        notes = extract_notes(str(path), target_sr=SR, min_note_duration=0.05, merge_gap=0.0)
+        notes = extract_notes(
+            str(path), target_sr=SR, min_note_duration=0.05, merge_gap=0.0, skip_first_note=False
+        )
 
         assert len(notes) == 2, "equal-pitch notes separated by silence must stay separate notes"
         assert notes[0]["end"] <= notes[1]["start"], "notes must not overlap"
@@ -136,6 +144,94 @@ class TestMelodyFidelity:
         assert len(melody) == 1
         # A4 = MIDI note 69
         assert melody[0]["hz"] == pytest.approx(69.0, abs=0.5)
+
+
+class TestSkipFirstNote:
+    """Recordings reliably start with a mic pop / breath catch right as
+    recording begins, before the user actually starts humming. Both
+    extract_notes (test/debug path) and _build_melody (the production path
+    behind /talk/notes and /talk/song) drop that leading segment by default,
+    but must never do so when it would erase a hum's only note."""
+
+    def _pop_then_melody(self, tmp_path, name="pop_melody.wav"):
+        path = tmp_path / name
+        # A mic pop/attack transient needs to be loud and long enough to
+        # register as its own segment at all (a too-brief blip just gets
+        # smoothed away by detect_sound_segments' analysis window) — a burst
+        # of noise a bit longer than one analysis frame does the job.
+        pop = 0.9 * (
+            2 * np.random.default_rng(0).random(int(SR * 0.12)).astype(np.float32) - 1
+        )
+        sequence = [(261.63, 0.4), (329.63, 0.4)]  # C4, E4
+        note1 = _tone(sequence[0][0], sequence[0][1])
+        note2 = _tone(sequence[1][0], sequence[1][1])
+        combined = np.concatenate(
+            [pop, _silence(0.3), note1, _silence(0.2), note2]
+        )
+        _write_wav(path, combined)
+        return path, sequence
+
+    def test_extract_notes_drops_the_leading_pop_by_default(self, tmp_path):
+        path, sequence = self._pop_then_melody(tmp_path)
+        notes = extract_notes(str(path), target_sr=SR, min_note_duration=0.02)
+
+        assert len(notes) == len(sequence)
+        for note, (expected_freq, _duration) in zip(notes, sequence):
+            assert note["pitch_hz"] == pytest.approx(expected_freq, rel=0.06)
+
+    def test_extract_notes_keeps_a_single_real_note(self, tmp_path):
+        """A hum with exactly one detected sound must never be emptied out by
+        the leading-artifact heuristic."""
+        path = tmp_path / "single_note.wav"
+        _write_wav(path, _tone(440.0, 0.6))
+
+        notes = extract_notes(str(path), target_sr=SR, min_note_duration=0.02)
+
+        assert len(notes) == 1
+        assert notes[0]["pitch_hz"] == pytest.approx(440.0, rel=0.05)
+
+    def test_build_melody_drops_the_first_segment_by_default(self):
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.1, "duration": 0.1},
+                {"start": 0.3, "end": 0.7, "duration": 0.4},
+            ],
+            "pitch": {
+                "times": [0.05, 0.5],
+                "frequencies": [999.0, 261.63],
+                "voiced_flag": [True, True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 1
+        assert melody[0]["start"] == pytest.approx(0.3)
+
+    def test_build_melody_keeps_a_single_segment(self):
+        analysis = {
+            "segments": [{"start": 0.0, "end": 0.4, "duration": 0.4}],
+            "pitch": {
+                "times": [0.2],
+                "frequencies": [261.63],
+                "voiced_flag": [True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 1
+
+    def test_build_melody_can_opt_out(self):
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.1, "duration": 0.1},
+                {"start": 0.3, "end": 0.7, "duration": 0.4},
+            ],
+            "pitch": {
+                "times": [0.05, 0.5],
+                "frequencies": [261.63, 329.63],
+                "voiced_flag": [True, True],
+            },
+        }
+        melody = _build_melody(analysis, skip_first_note=False)
+        assert len(melody) == 2
 
 
 class TestVibratoFidelity:
@@ -185,7 +281,9 @@ class TestVibratoFidelity:
         ]
         _write_wav(path, np.concatenate(chunks))
 
-        notes = extract_notes(str(path), target_sr=SR, min_note_duration=0.05)
+        notes = extract_notes(
+            str(path), target_sr=SR, min_note_duration=0.05, skip_first_note=False
+        )
 
         assert len(notes) == 2
         assert notes[0]["pitch_hz"] == pytest.approx(261.63, rel=0.06)
@@ -259,7 +357,9 @@ class TestNoiseReduction:
         sequence = [(261.63, 0.4), (329.63, 0.4), (392.00, 0.4)]  # C4, E4, G4
         _write_tone_sequence(path, sequence)
 
-        notes_denoised = extract_notes(str(path), target_sr=SR, min_note_duration=0.05)
+        notes_denoised = extract_notes(
+            str(path), target_sr=SR, min_note_duration=0.05, skip_first_note=False
+        )
 
         processor = AudioProcessor(target_sr=SR)
         result_raw = processor.process_audio(str(path), reduce_noise=False)

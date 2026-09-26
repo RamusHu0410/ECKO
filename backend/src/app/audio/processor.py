@@ -717,8 +717,22 @@ def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
         return 0.0
 
 
-def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
-    """Convert detected sound segments into the MIDI-note API melody format."""
+def _build_melody(
+    analysis: Dict[str, Any], skip_first_note: bool = True
+) -> List[Dict[str, float]]:
+    """Convert detected sound segments into the MIDI-note API melody format.
+
+    Args:
+        analysis: The ``process_audio`` result.
+        skip_first_note: Drop the earliest detected sound segment before
+            building the melody. Recordings reliably start with a mic pop,
+            breath catch, or attack transient right as recording begins,
+            before the user actually starts humming, and that leading
+            segment is essentially always that artifact rather than a sung
+            note. Guarded on there being more than one segment: a hum with
+            only one detected sound is that sung note, not an artifact, and
+            must never be dropped by this heuristic.
+    """
     pitch = analysis.get("pitch", {})
     if not isinstance(pitch, dict):
         return []
@@ -727,7 +741,11 @@ def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
     voiced = np.asarray(pitch.get("voiced_flag", []), dtype=bool)
     melody = []
 
-    for segment in analysis.get("segments", []):
+    segments = analysis.get("segments", [])
+    if skip_first_note and len(segments) > 1:
+        segments = segments[1:]
+
+    for segment in segments:
         start, end = float(segment["start"]), float(segment["end"])
         values = frequencies[(times >= start) & (times <= end) & voiced]
         values = values[np.isfinite(values) & (values > 0)]
@@ -840,6 +858,7 @@ def extract_notes(
     top_db: float = 30,
     min_note_duration: float = 0.05,
     merge_gap: float = 0.05,
+    skip_first_note: bool = True,
     debug: bool = False,
 ) -> list[dict[str, Any]]:
     """
@@ -853,6 +872,13 @@ def extract_notes(
         top_db: Silence threshold for segment detection
         min_note_duration: Minimum note duration in seconds
         merge_gap: Merge notes separated by less than this gap (seconds)
+        skip_first_note: Drop the very first detected note. Recordings
+            reliably start with a mic pop, breath catch, or attack transient
+            right as recording begins, before the user actually starts
+            humming; the first "note" segment_detection finds is essentially
+            always that artifact rather than a sung pitch. Dropped before
+            merging so it can never get averaged into (and so corrupt) the
+            real first note.
         debug: Enable debug output
 
     Returns:
@@ -916,6 +942,13 @@ def extract_notes(
                 "pitch_hz": round(note_pitch, 1),
             }
         )
+
+    # Drop the leading mic-pop/attack-transient "note" before merging, so it
+    # can never get blended into the real first note's pitch/volume average.
+    # Guarded on len > 1: a hum with only one detected note is that note, not
+    # an artifact, and must never be zeroed out by this heuristic.
+    if skip_first_note and len(notes) > 1:
+        notes = notes[1:]
 
     # Merge notes that are very close together (same pitch-ish)
     if merge_gap > 0 and len(notes) > 1:

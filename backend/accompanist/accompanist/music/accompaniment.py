@@ -30,6 +30,12 @@ ACCOMP_FIXED_VELOCITY = 100
 # melody's lowest note within that bar (see `_pitches_below_melody`), so the
 # accompaniment never sits in or above the melody's register and mask it.
 MIN_ACCOMPANIMENT_PITCH = 24  # never drop chords below this (C1) chasing separation
+# A note that runs right up to the exact instant the next note attacks gets
+# cut off mid-decay by that retrigger, instead of ringing out — it never
+# audibly "resonates". Shaving a small silent gap off the end gives the
+# synth's release/decay phase somewhere to finish. Never crosses a bar
+# boundary (that invariant is load-bearing elsewhere), only shrinks toward it.
+NOTE_RELEASE_SECONDS = 0.03
 
 # Named General MIDI instruments (program numbers) for convenience.
 INSTRUMENTS: dict[str, int] = {
@@ -49,6 +55,18 @@ BROKEN_PATTERN = [0, 2, 1, 2]
 
 def _seconds_per_beat(tempo: float) -> float:
     return 60.0 / tempo
+
+
+def _trim_for_release(
+    start_seconds: float, end_seconds: float, release_seconds: float = NOTE_RELEASE_SECONDS
+) -> float:
+    """Return an end time shortened by a small release gap, so the note's
+    natural decay isn't cut off by the next note's attack. Never eats more
+    than a quarter of the note's own length, so short notes (fast broken-
+    chord steps) aren't gutted."""
+    duration = end_seconds - start_seconds
+    gap = min(release_seconds, duration * 0.25)
+    return end_seconds - max(gap, 0.0)
 
 
 def _melody_min_pitch_in_range(
@@ -162,12 +180,14 @@ def render_accompaniment(
                     scaled_vel = ACCOMP_FIXED_VELOCITY
                 else:
                     scaled_vel = max(1, min(127, int(vel * ACCOMP_VELOCITY_SCALE)))
+                note_start = ev_start * spb
+                note_end = _trim_for_release(note_start, ev_end * spb)
                 acc.notes.append(
                     pretty_midi.Note(
                         velocity=scaled_vel,
                         pitch=int(pitch),
-                        start=ev_start * spb,
-                        end=ev_end * spb,
+                        start=note_start,
+                        end=note_end,
                     )
                 )
         else:
@@ -201,7 +221,7 @@ def render_accompaniment(
 
 def _add_block(inst, pitches, start_beat, dur_beats, spb, velocity):
     start = start_beat * spb
-    end = (start_beat + dur_beats) * spb
+    end = _trim_for_release(start, (start_beat + dur_beats) * spb)
     for p in pitches:
         inst.notes.append(
             pretty_midi.Note(velocity=velocity, pitch=p, start=start, end=end)
@@ -216,7 +236,7 @@ def _add_broken(inst, pitches, start_beat, dur_beats, spb, velocity):
         # idx points into [root, third, fifth]; clamp for non-triads.
         pitch = pitches[idx % len(pitches)]
         note_start = (start_beat + k * step_beats) * spb
-        note_end = note_start + step_beats * spb
+        note_end = _trim_for_release(note_start, note_start + step_beats * spb)
         inst.notes.append(
             pretty_midi.Note(
                 velocity=velocity, pitch=pitch, start=note_start, end=note_end
