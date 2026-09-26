@@ -178,6 +178,10 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)))
 
 
+# Public name for the pitch contour, which needs the same runs of sounding frames.
+sounding_runs = _runs
+
+
 def _sounding_runs(active, smooth, bridge, window, settings) -> list[tuple[int, int]]:
     """Stretches of sound. Two are joined across a silence shorter than ``bridge`` frames (the
     pitch tracker losing a breathy tone for a moment) only if the pitch is the same on both sides:

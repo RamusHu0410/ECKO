@@ -14,6 +14,8 @@
   --color-ink-muted: #8a8074;
   --color-amber: #e8a94c;
   --color-amber-glow: rgba(232, 169, 76, 0.55);
+  /* Fine rules and dividers: ink at low opacity */
+  --color-hairline: rgba(42, 36, 32, 0.14);
 
   /* The page: off-white, lit from the top-left */
   --color-page: #f4f1ec;
@@ -23,26 +25,38 @@
   /*
    * Glass (glass.css): panel, faders, buttons, pills and messages on the page
    */
-  --glass-tint: rgba(255, 255, 255, 0.55);
-  --glass-tint-hover: rgba(255, 255, 255, 0.72);
+  /* Committed white, a little clearer toward the bottom-right so the white rim has something to
+     shine against on a white page */
+  --glass-tint: rgba(255, 255, 255, 0.74);
+  --glass-tint-low: rgba(255, 255, 255, 0.34);
+  --glass-tint-angle: 165deg;
+  --glass-tint-hover: rgba(255, 255, 255, 0.9);
   --glass-tint-nested: rgba(255, 255, 255, 0.2);
   --glass-blur: 14px;
   --glass-brightness: 1.04;
-  --glass-rim-width: 1.5px;
+  /* A soft shade just inside the edge, where the rim fades along the sides */
+  --glass-edge-shade: rgba(120, 100, 80, 0.1);
+  --glass-edge-shade-blur: 6px;
+  --glass-rim-width: 2px;
   --glass-rim-width-disc: 2.5px;
-  --glass-rim-bright: rgba(255, 255, 255, 0.95);
-  --glass-rim-dim: rgba(255, 255, 255, 0.06);
-  --glass-rim-fade-start: 30%;
-  --glass-rim-fade-end: 70%;
+  --glass-rim-bright: rgba(255, 255, 255, 1);
+  --glass-rim-dim: rgba(255, 255, 255, 0.1);
+  --glass-rim-fade-start: 26%;
+  --glass-rim-fade-end: 74%;
   --glass-rim-disc-spread: 55deg;
   --glass-inset-top: rgba(255, 255, 255, 0.9);
   --glass-inset-bottom: rgba(120, 100, 80, 0.12);
+  /* The page is white, so a faint dark hairline outside the bright rim keeps the glass edge
+     visible, as in iOS light mode */
+  --glass-edge-dark: rgba(40, 28, 18, 0.2);
   --glass-shadow-strength: 0.22;
   --glass-shadow:
+    0 0 0 0.5px var(--glass-edge-dark),
     0 1px 2px rgba(40, 28, 18, calc(var(--glass-shadow-strength) * 0.4)),
     0 18px 40px -16px rgba(40, 28, 18, var(--glass-shadow-strength)),
     0 40px 80px -36px rgba(40, 28, 18, calc(var(--glass-shadow-strength) * 0.7));
   --glass-shadow-small:
+    0 0 0 0.5px var(--glass-edge-dark),
     0 1px 2px rgba(40, 28, 18, calc(var(--glass-shadow-strength) * 0.4)),
     0 8px 20px -10px rgba(40, 28, 18, var(--glass-shadow-strength));
   --radius-panel: 28px;
@@ -71,6 +85,8 @@
   /* Walnut: the maple photo multiplied by this shade; faces darker away from the light */
   --wood-shade: #7d6452;
   --color-wood: #5e4130;
+  /* The 3D turntable: the maple photo is multiplied by this (it is lit, so it needs a deeper shade) */
+  --wood-shade-3d: #5f412e;
   --wood-face-front: rgba(20, 10, 4, 0.22);
   --wood-face-side: rgba(20, 10, 4, 0.42);
   --wood-bevel-light: rgba(255, 236, 214, 0.35);

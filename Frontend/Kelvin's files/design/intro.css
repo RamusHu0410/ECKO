@@ -1,0 +1,109 @@
+/*
+ * The intro at the top of the page: the words on the left, a large record turning on the right
+ * (cut off by the page edge, as if sliding out of its sleeve), and a cue down to the studio.
+ * Light comes from the top-left, as everywhere, so the record's shadow falls to the bottom-right.
+ */
+@layer components {
+  .intro {
+    --intro-record-size: clamp(320px, 50vw, 760px);
+    position: relative;
+    display: flex;
+    min-height: 100dvh;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+    padding: 6.5rem 1.25rem 6rem;
+  }
+
+  .intro-record {
+    position: absolute;
+    top: 50%;
+    right: calc(var(--intro-record-size) * -0.3);
+    width: var(--intro-record-size);
+    aspect-ratio: 1;
+    translate: 0 -50%;
+    border-radius: 50%;
+    box-shadow:
+      10px 16px 24px -6px var(--shadow-contact),
+      40px 70px 120px -30px var(--shadow-ambient);
+  }
+
+  /* Narrow screens: the record comes first, above the words, still cut off by the right edge */
+  @media (max-width: 1023px) {
+    .intro {
+      --intro-record-size: min(78vw, 420px);
+      justify-content: flex-start;
+    }
+
+    .intro-record {
+      position: relative;
+      top: auto;
+      right: auto;
+      order: -1;
+      flex-shrink: 0;
+      translate: none;
+      margin: 0 calc(var(--intro-record-size) * -0.28) 2rem auto;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .intro {
+      padding-inline: 3rem;
+    }
+  }
+
+  .intro-cue {
+    position: absolute;
+    bottom: 1.75rem;
+    left: 50%;
+    translate: -50% 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-ink-muted);
+  }
+
+  .intro-cue:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 6px;
+    border-radius: 6px;
+  }
+
+  /* a thin line with a short dash falling down it, again and again */
+  .intro-cue-line {
+    position: relative;
+    width: 1px;
+    height: 44px;
+    overflow: hidden;
+    background: var(--color-hairline);
+  }
+
+  .intro-cue-line::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -40%;
+    width: 1px;
+    height: 40%;
+    background: var(--color-ink);
+    animation: cue-fall 1.8s cubic-bezier(0.5, 0, 0.3, 1) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .intro-cue-line::after {
+      top: 30%;
+      animation: none;
+    }
+  }
+}
+
+@keyframes cue-fall {
+  to {
+    top: 100%;
+  }
+}

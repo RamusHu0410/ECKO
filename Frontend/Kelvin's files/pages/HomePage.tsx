@@ -1,21 +1,22 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { lazy, Suspense } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import Turntable from '../components/Turntable/Turntable'
 import Microphone from '../components/Microphone/Microphone'
 import ModeButtons from '../components/Turntable/ModeButtons'
 import NoteStream from '../components/NoteStream/NoteStream'
 import AdjustmentsPanel from '../components/AdjustmentsPanel/AdjustmentsPanel'
 import NotesGraph from '../components/NotesGraph/NotesGraph'
+import Intro from '../components/Intro/Intro'
 import GlassButton from '../components/GlassButton/GlassButton'
 import GlassMessage from '../components/GlassMessage/GlassMessage'
-import { useRecordSession } from '../hooks/useRecordSession'
-import { useMode } from '../hooks/useMode'
-import { useSongSettings } from '../hooks/useSongSettings'
-import { useHoldToRecord } from '../hooks/useHoldToRecord'
-import { useSongPlayer } from '../hooks/useSongPlayer'
-import { useTalk } from '../hooks/useTalk'
+import { useStudio } from '../hooks/useStudio'
+
+/** The 3D turntable loads on its own (three.js is large), so the intro shows at once. */
+const Turntable3D = lazy(() => import('../components/Turntable3D/Turntable3D'))
+/** Dev switch while the 3D turntable is reviewed: add ?turntable=css to the address for the CSS one. */
+const CSS_TURNTABLE = new URLSearchParams(window.location.search).get('turntable') === 'css'
 import { appear } from '../design/motion'
 import {
-  ACCOMPANIMENT_HELP,
   ANNOUNCEMENTS,
   MIC_HELP,
   UPLOAD_FAILED_TITLE,
@@ -27,69 +28,58 @@ import {
 } from './homeCopy'
 
 /**
- * The turntable scene: the header top-left, the turntable centered with the microphone below
- * it. Once a hum presses and uploads successfully, the turntable settles into a top-down
- * birdview and the adjustments panel fades in beneath it. Narrow screens stack it all the same
- * way.
+ * The home page: the intro, then the studio below it. In the studio the turntable is centered
+ * with the microphone below it, the HUM / TALK keys to its left and the song's buttons to its
+ * right. Once a song is made, the turntable settles into a top-down birdview and the adjustments
+ * panel fades in beneath it. Narrow screens stack it all the same way.
  */
 export default function HomePage() {
-  const reducedMotion = useReducedMotion() ?? false
-  const { settings, update } = useSongSettings()
-  const session = useRecordSession(reducedMotion, settings)
-  const { mode, setMode } = useMode()
-  const { phase, micProblem, uploadFailure, accompanimentFailure } = session
-  const talk = useTalk({ settings, update, remakeSong: session.remakeSong })
-  const talking = mode === 'talk' && phase === 'ready'
-  const canTalk = talking && !talk.busy
-
-  // the song plays while the record turns, and waits while someone talks to it
-  useSongPlayer(session.song, phase === 'ready' && !session.paused && !talk.busy)
-
-  const hold = useHoldToRecord({
-    enabled: mode === 'talk' ? canTalk : phase === 'idle' || phase === 'recording',
-    onPress: () => {
-      // talk mode: listen, then the faders move and the song is remade from the same hum
-      if (mode === 'talk') void talk.listen()
-      else if (phase === 'idle') session.record()
-    },
-    // released before the mic was ready (e.g. during the permission prompt): the recording
-    // keeps going and a tap on the mic stops it
-    onRelease: () => {
-      if (mode === 'talk') talk.stop()
-      else if (phase === 'recording') session.stopRecording()
-    },
-  })
-
-  const recording = phase === 'recording'
-  const adjustable = phase === 'ready'
+  const studio = useStudio()
+  const { session, talk, mode, mic, talking, hasSong, reducedMotion, settings } = studio
+  const { phase, micProblem, uploadFailure } = session
 
   return (
-    <main className="grid min-h-dvh grid-cols-1 gap-y-6 px-5 py-8 lg:px-12 lg:py-10">
-      <header>
-        <h1 className="font-display text-5xl tracking-wide text-ink">ECKO</h1>
-        <p className="mt-2 text-lg text-ink">Hum a tune. Get a song.</p>
-        <p className="mt-1 max-w-64 text-sm leading-snug text-ink-muted">
-          Hum for up to 10 seconds, and we’ll press it into a record.
-        </p>
-      </header>
+    <main>
+      <Intro reducedMotion={reducedMotion} />
 
-      <section aria-label="Turntable" className="flex flex-col items-center justify-center">
-        <Turntable
-          platter={{
-            rotation: session.rotation,
-            canvas: session.canvas,
-            reducedMotion,
-            isVinyl: session.isVinyl,
-            tappable: phase === 'ready',
-            label: discLabel(phase, session.paused),
-            onTap: session.tap,
-          }}
-          tonearm={{ onRecord: phase === 'ready', reducedMotion }}
-          topDown={adjustable}
-        />
+      {/* the studio, where the recording happens; the intro's links land here (and focus it, so the
+          spacebar records straight away) */}
+      <section id="studio" tabIndex={-1} aria-label="Studio" className="flex min-h-dvh flex-col items-center px-5 py-10 outline-none lg:px-12">
+        {CSS_TURNTABLE ? (
+          <Turntable
+            platter={{
+              rotation: session.rotation,
+              canvas: session.canvas,
+              reducedMotion,
+              isVinyl: session.isVinyl,
+              tappable: phase === 'ready',
+              label: discLabel(phase, session.paused),
+              onTap: session.tap,
+            }}
+            tonearm={{ onRecord: hasSong, reducedMotion }}
+            topDown={hasSong}
+          />
+        ) : (
+          <Suspense fallback={<div className="tt3d" />}>
+            <Turntable3D
+              rotation={session.rotation}
+              disc={{ ...session.canvas, reducedMotion }}
+              isVinyl={session.isVinyl}
+              tappable={phase === 'ready'}
+              label={discLabel(phase, session.paused)}
+              onTap={session.tap}
+              onRecord={hasSong}
+              reducedMotion={reducedMotion}
+              mode={mode}
+              onModeChange={studio.setMode}
+              modeLocked={studio.modeLocked}
+            />
+          </Suspense>
+        )}
 
-        {/* status under the turntable; messages float here so nothing shifts */}
-        <div className="relative z-10 flex h-12 w-full justify-center">
+        {/* status under the turntable: the pressing pill fits without moving anything; a message
+            (which needs the room for its buttons) pushes the controls down while it shows */}
+        <div className="flex min-h-12 w-full items-start justify-center">
           <AnimatePresence mode="wait">
             {phase === 'waiting' && (
               <motion.p key="waiting" className="glass-surface glass-control h-fit px-5 py-2 text-sm text-ink" {...appear}>
@@ -121,40 +111,45 @@ export default function HomePage() {
                 actions={<GlassButton onClick={session.reset}>Try again</GlassButton>}
               />
             )}
-            {phase === 'ready' && accompanimentFailure && (
-              <motion.p key="accompaniment-failed" className="glass-surface glass-control h-fit px-5 py-2 text-sm text-ink" {...appear}>
-                <span className="glass-content">{ACCOMPANIMENT_HELP[accompanimentFailure.kind]}</span>
-              </motion.p>
-            )}
           </AnimatePresence>
         </div>
 
-        {/* the mode keys sit left of the mic and Re-record right of it, both measured from the mic's
-            centre line, so a long caption under the mic doesn't push them around */}
-        <div className="relative">
-          <div className="absolute top-1/4 right-[calc(50%+var(--mic-size)*0.55+1rem)]">
-            <ModeButtons mode={mode} onChange={setMode} />
+        {/* the keys, the mic with its caption, and the song's buttons. A grid, so a long caption (a talk
+            reply) wraps inside the middle column instead of spreading over the keys and taking their
+            clicks. Narrow screens put the mic on its own row. */}
+        <div className="grid w-full max-w-2xl grid-cols-2 items-start gap-x-5 gap-y-4 sm:grid-cols-[1fr_minmax(0,18rem)_1fr]">
+          <div className="col-span-2 flex justify-center sm:col-span-1 sm:col-start-2 sm:row-start-1">
+            <Microphone
+              pointerHandlers={mic.pointerHandlers}
+              recording={mic.recording}
+              enabled={mic.enabled}
+              label={micLabel(mode)}
+              caption={
+                talking
+                  ? talkCaption(talk.phase, talk.reply, talk.problem, talk.secondsLeft)
+                  : micCaption(phase, mode, mic.holding, session.secondsLeft, talk.busy)
+              }
+            >
+              <NoteStream active={phase === 'recording'} level={session.canvas.liveLevel} />
+            </Microphone>
           </div>
-          <Microphone
-            pointerHandlers={hold.pointerHandlers}
-            recording={recording || talk.phase === 'listening'}
-            enabled={mode === 'talk' ? canTalk : phase === 'idle' || phase === 'requesting' || recording}
-            label={micLabel(mode)}
-            caption={
-              talking
-                ? talkCaption(talk.phase, talk.reply, talk.problem, talk.secondsLeft)
-                : micCaption(phase, mode, hold.holding, session.secondsLeft)
-            }
+          {/* with the 3D turntable, HUM / TALK are keys on the plinth; these stay for the keyboard and
+              screen readers, and show only while one of them has focus */}
+          <div
+            className={`justify-self-end sm:col-start-1 sm:row-start-1 sm:pt-[calc(var(--mic-size)*0.3)] ${CSS_TURNTABLE ? '' : 'sr-only focus-within:not-sr-only'}`}
           >
-            <NoteStream active={recording} level={session.canvas.liveLevel} />
-          </Microphone>
+            <ModeButtons mode={mode} onChange={studio.setMode} disabled={studio.modeLocked} />
+          </div>
           <AnimatePresence>
-            {phase === 'ready' && (
-              <div className="absolute top-1/3 left-[calc(50%+var(--mic-size)*0.55+1rem)]">
-                <GlassButton key="rerecord" onClick={session.reset} {...appear}>
-                  Re-record
-                </GlassButton>
-              </div>
+            {hasSong && (
+              <motion.div
+                key="song-buttons"
+                className="flex flex-col items-start gap-3 justify-self-start sm:col-start-3 sm:row-start-1 sm:pt-[calc(var(--mic-size)*0.12)]"
+                {...appear}
+              >
+                <GlassButton onClick={studio.replay}>Replay</GlassButton>
+                <GlassButton onClick={session.reset}>Re-record</GlassButton>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
@@ -162,9 +157,11 @@ export default function HomePage() {
         {/* what ECKO understood the last command to do, e.g. "✓ Keep piano" and "+ Add violin — soft, in the background" */}
         <AnimatePresence>
           {talking && talk.understood.length > 0 && (
-            <motion.ul key="understood" className="mt-2 text-center text-xs leading-relaxed text-ink-muted" {...appear}>
+            <motion.ul key="understood" className="glass-surface glass-message mt-3 px-5 py-3 text-xs leading-relaxed text-ink" {...appear}>
               {talk.understood.map((line) => (
-                <li key={line}>{line}</li>
+                <li key={line} className="glass-content">
+                  {line}
+                </li>
               ))}
             </motion.ul>
           )}
@@ -175,9 +172,9 @@ export default function HomePage() {
         </p>
 
         <AnimatePresence>
-          {adjustable && (
+          {hasSong && (
             <motion.div key="adjustments" className="mt-8 flex w-full flex-col items-center gap-6" {...appear}>
-              <AdjustmentsPanel settings={settings} onChange={update} />
+              <AdjustmentsPanel settings={settings} onChange={studio.adjust} />
               {session.notes && <NotesGraph notes={session.notes} />}
             </motion.div>
           )}

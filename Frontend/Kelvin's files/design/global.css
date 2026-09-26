@@ -3,8 +3,10 @@
 @import "./tokens.css";
 @import "./glass.css";
 @import "./turntable.css";
+@import "./turntable3d.css";
 @import "./vinyl.css";
 @import "./scene.css";
+@import "./intro.css";
 
 @layer base {
   html {
@@ -14,5 +16,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* links within the page (the intro's) glide down instead of jumping */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
 }

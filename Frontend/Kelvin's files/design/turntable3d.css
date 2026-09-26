@@ -1,0 +1,24 @@
+/*
+ * The 3D turntable's frame on the page. The canvas fades out toward its edges, so a shadow, or a
+ * turntable the camera has been turned around, never ends in a hard line against the white page.
+ */
+@layer components {
+  .tt3d {
+    position: relative;
+    width: 100%;
+    max-width: 64rem;
+    height: min(62vh, 620px);
+    min-height: 20rem;
+  }
+
+  .tt3d canvas {
+    -webkit-mask-image:
+      linear-gradient(to bottom, transparent, #000 4%, #000 86%, transparent),
+      linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to bottom, transparent, #000 4%, #000 86%, transparent),
+      linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+    mask-composite: intersect;
+  }
+}

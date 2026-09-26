@@ -4,6 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // three.js is most of a megabyte and is deliberately in its own lazy chunk (the studio loads
+    // it, the intro and the other pages never do), so the default 500 kB warning is noise here.
+    chunkSizeWarningLimit: 1000,
+  },
   server: {
     // The browser calls /api/...; Vite forwards it to the Flask dev server on port 8000 with the
     // /api prefix removed (/api/upload → /upload), so requests stay same-origin and need no CORS.

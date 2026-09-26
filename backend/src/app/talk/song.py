@@ -221,12 +221,14 @@ def song_notes(hum_path: str, settings: SongSettings) -> dict:
 
 def notes_from(analysis: dict, settings: SongSettings) -> dict:
     """Both lists as MIDI pitch with start and length in seconds, so they share one time axis
-    (the song's first note is placed where the hum's first note was)."""
+    (the song's first note is placed where the hum's first note was), plus the hum's pitch as it
+    was actually sung (``contour``), which is what the graph draws the line from."""
     request = engine_request(analysis, settings)
     first = min((n["start"] for n in analysis["melody"]), default=0.0)
     return {
         "sung": [_note(n["hz"], n["start"], n["duration"]) for n in analysis["melody"]],
         "played": [_note(n["hz"], n["start"], n["duration"]) for n in seconds_from_engine(request["melody"], request["tempo"], first)],
+        "contour": analysis.get("contour", {"step": 0.0, "segments": []}),
     }
 
 

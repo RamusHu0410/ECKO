@@ -3,7 +3,8 @@
 POST /talk/voice          the recording + current settings → what was heard, new settings, reply id
 GET  /talk/speech/<id>    that reply, spoken and streamed as MP3
 POST /talk/song           the hum saved by /upload + settings → the song as WAV
-POST /talk/notes          the same → the notes heard in the hum and the notes the song plays (JSON)
+POST /talk/notes          the same → the notes heard in the hum, the notes the song plays, and the
+                          hum's pitch frame by frame for the notes graph (JSON)
 """
 
 import json
