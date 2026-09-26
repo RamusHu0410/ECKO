@@ -11,6 +11,7 @@ try:
     import librosa
     import librosa.feature
     import librosa.onset
+    import librosa.beat
 
     LIBROSA_avaliable = True
 except ImportError:
@@ -162,7 +163,7 @@ class AudioProcessor:
             audio = np.mean(audio, axis=1)
             self._debug_print(f"{audio.shape}")
         # Resample if needed
-        if sr != self.target_sr and LIBROSA_AVAILABLE:
+        if sr != self.target_sr and LIBROSA_avaliable:
             self._debug_print(f"Resampling from {sr}Hz to {self.target_sr}Hz")
             audio = librosa.resample(audio, orig_sr=sr, target_sr=self.target_sr)
             sr = self.target_sr
@@ -584,6 +585,8 @@ class AudioProcessor:
         # Load audio
         load_start = time.time()
         audio, sr = self.load_wav(filepath)
+        self.audio = audio
+        self.sr = sr
         info = self.get_audio_info(filepath)
         self._debug_print(f"Load + info took {time.time() - load_start:.3f}s")
 
@@ -666,13 +669,17 @@ class AudioProcessor:
 
 
 # =============================================================================
-# PUBLIC API FUNCTIONS - Import these from other files
+# PUBLIC API FUNCTIONS
 # =============================================================================
 
 
 _PITCH_CLASS_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-_MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-_MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+_MAJOR_PROFILE = np.array(
+    [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+)
+_MINOR_PROFILE = np.array(
+    [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+)
 
 
 def _estimate_key_and_mode(audio: np.ndarray, sr: int) -> tuple[str, str]:
@@ -697,14 +704,21 @@ def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
     """Estimate tempo in BPM, returning 0.0 when it cannot be determined."""
     if not LIBROSA_avaliable or audio.size == 0 or np.allclose(audio, 0):
         return 0.0
-
-    tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
-    return round(float(np.asarray(tempo).reshape(-1)[0]), 2)
+    try:
+        tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
+        tempo_arr = np.asarray(tempo).reshape(-1)
+        if tempo_arr.size == 0:
+            return 0.0
+        return round(float(tempo_arr[0]), 2)
+    except Exception:
+        return 0.0
 
 
 def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
     """Convert detected sound segments into the MIDI-note API melody format."""
     pitch = analysis.get("pitch", {})
+    if not isinstance(pitch, dict):
+        return []
     times = np.asarray(pitch.get("times", []), dtype=float)
     frequencies = np.asarray(pitch.get("frequencies", []), dtype=float)
     voiced = np.asarray(pitch.get("voiced_flag", []), dtype=bool)
@@ -716,15 +730,17 @@ def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
         values = values[np.isfinite(values) & (values > 0)]
         if values.size:
             frequency_hz = float(np.median(values))
-            melody.append({
-                # The accompaniment API historically calls this field ``hz``,
-                # but its public contract uses MIDI note numbers (60 = C4).
-                "hz": round(float(librosa.hz_to_midi(frequency_hz)), 2)
-                if LIBROSA_avaliable
-                else round(69 + 12 * np.log2(frequency_hz / 440.0), 2),
-                "start": round(start, 3),
-                "duration": round(float(segment["duration"]), 3),
-            })
+            melody.append(
+                {
+                    # The accompaniment API historically calls this field ``hz``,
+                    # but its public contract uses MIDI note numbers (60 = C4).
+                    "hz": round(float(librosa.hz_to_midi(frequency_hz)), 2)
+                    if LIBROSA_avaliable
+                    else round(69 + 12 * np.log2(frequency_hz / 440.0), 2),
+                    "start": round(start, 3),
+                    "duration": round(float(segment["duration"]), 3),
+                }
+            )
     return melody
 
 
@@ -760,7 +776,9 @@ def analyze_audio_file(
         extract_volume=extract_volume,
         extract_spectral=extract_spectral,
     )
-    audio, sr = processor.load_wav(filepath)
+    # Reuse audio already loaded by process_audio instead of loading twice
+    audio = processor.audio
+    sr = processor.sr
     key, mode = _estimate_key_and_mode(audio, sr)
     return {
         "melody": _build_melody(analysis),
@@ -926,7 +944,6 @@ def extract_notes(
                 f"  Note {i}: {n['start']:.2f}s-{n['end']:.2f}s "
                 f"dur={n['duration']:.2f}s vol={n['volume']:.4f} pitch={n['pitch_hz']:.1f}Hz"
             )
-    generate_accompaniment(notes)
     return notes
 
 

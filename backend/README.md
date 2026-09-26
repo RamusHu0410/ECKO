@@ -4,8 +4,6 @@
 uv run flask --app src/app:create_app run --port 8000
 
 
-
-
 Start the server (terminal 1)
 bash
 
@@ -68,3 +66,12 @@ format=json → metadata (key, mode, progression) — no file
 format=midi → a .mid file, Content-Type: audio/midi (accompaniment track + melody track)
 format=wav → a .wav file, Content-Type: audio/wav
 One tip: since timing is in beats and it's one chord per bar (4 beats), a melody spanning only a few beats gives a 1-chord progression. Use an 8-bar melody (notes with start from 0 up to ~31) if you want to see a full C F G C Am F G C-style progression.
+
+## Running Tests
+
+The test suite is located in `src/tests/` and covers the application factory, configuration, audio processor, and API routes.
+
+### Prerequisites
+
+Make sure test dependencies are installed:
+
