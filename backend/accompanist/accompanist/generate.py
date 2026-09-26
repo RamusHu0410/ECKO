@@ -22,6 +22,11 @@ from accompanist.music.scales import snap_notes
 
 DEFAULT_BEATS_PER_BAR = 4.0
 
+# Debug bypass: while enabled, generate_accompaniment skips key detection,
+# modulation, melody editing, harmony, progression, voice leading, and style
+# generation. The output MIDI/WAV contains only the untouched input melody.
+DEBUG_BYPASS_GENERATION = True
+
 
 @dataclass
 class AccompanimentResult:
@@ -67,81 +72,6 @@ def _melody_to_note_dicts(melody: Melody) -> list[dict]:
     ]
 
 
-def debug_convert(melody_input) -> dict:
-    """Debug: show the audio->data conversion WITHOUT composing anything.
-
-    Returns exactly what the pipeline parsed from the input, so you can see
-    where a problem originates (bad input vs. bad composition):
-
-        * raw_input        - the melody dict/JSON as received
-        * note_count       - how many notes were parsed
-        * parsed_notes     - the notes as pitch/start/duration (in beats)
-        * pitch_range      - min/max MIDI pitch (or None if empty)
-        * time_span_beats  - total length in beats
-        * declared_key/mode/tempo - what the input asked for (if any)
-        * detected_key/mode       - what key detection infers from the notes
-        * segments_per_bar        - note pitch classes bucketed into 4-beat bars
-
-    No MIDI/WAV is produced and the melody is never modified.
-    """
-    # Parse the input the same way generate_accompaniment does.
-    try:
-        melody = _melody_from_input(melody_input)
-    except (ValueError, TypeError) as exc:
-        return {"ok": False, "stage": "parse", "error": str(exc)}
-
-    notes = _melody_to_note_dicts(melody)
-
-    info: dict = {
-        "ok": True,
-        "note_count": len(notes),
-        "parsed_notes": notes,
-        "declared_key": getattr(melody, "key", None),
-        "declared_mode": getattr(melody, "mode", None),
-        "declared_tempo": float(melody.tempo),
-    }
-
-    if not notes:
-        info["ok"] = False
-        info["error"] = "Melody has no notes."
-        info["pitch_range"] = None
-        info["time_span_beats"] = 0.0
-        return info
-
-    pitches = [n["pitch"] for n in notes]
-    info["pitch_range"] = {"min": min(pitches), "max": max(pitches)}
-    info["time_span_beats"] = max(n["start"] + n["duration"] for n in notes)
-
-    # Key detection on the raw notes (this is the "converter" result).
-    try:
-        detected = detect_key_from_notes(notes)
-        info["detected_key"] = detected.tonic.name.replace("-", "b")
-        info["detected_mode"] = detected.mode
-    except Exception as exc:  # noqa: BLE001
-        info["detected_key"] = None
-        info["detected_mode"] = None
-        info["key_detection_error"] = str(exc)
-
-    # Per-bar segmentation (pitch classes) so timing issues are visible.
-    from accompanist.music.segmentation import segment_by_slot
-
-    bars = segment_by_slot(notes, DEFAULT_BEATS_PER_BAR)
-    info["num_bars"] = len(bars)
-    info["bars"] = [
-        {
-            "bar": i + 1,
-            "notes": [
-                {"pitch": n["pitch"], "start": n["start"], "duration": n["duration"]}
-                for n in bar
-            ],
-            "pitch_classes": sorted({n["pitch"] % 12 for n in bar}),
-        }
-        for i, bar in enumerate(bars)
-    ]
-
-    return info
-
-
 def generate_accompaniment(
     melody_input,
     midi_path: str = "accompaniment.mid",
@@ -161,6 +91,9 @@ def generate_accompaniment(
 ):
     """Generate an accompaniment for a melody, end to end.
 
+    When DEBUG_BYPASS_GENERATION is True, all composition stages are skipped
+    and the output contains only the original, untouched melody.
+
     Args:
         melody_input: A JSON string, a melody dict (Kingsley's format), or a
             Melody object.
@@ -170,7 +103,8 @@ def generate_accompaniment(
         mode: Override the detected mode ("major"/"minor"). Auto if None.
         tempo: Override tempo (BPM). Falls back to the melody's tempo.
         beats_per_bar: Bar length in beats.
-        include_melody: Also write the melody on its own track.
+        include_melody: Also write the melody on its own track. Debug bypass
+            ignores this option and always writes the original melody.
         allow_edit_melody: If True, the engine may modify the melody itself —
             snapping pitches to the style's scale and (for jazz) applying a
             swung, ornamented feel. If False (default), the melody is left
@@ -189,14 +123,65 @@ def generate_accompaniment(
     """
     warnings: list[str] = []
 
-    if style not in STYLES:
-        raise ValueError(f"Unknown style '{style}'. Choose from: {sorted(STYLES)}")
-
-    # 1. JSON -> Melody
+    # 1. JSON -> Melody. Keep this before the debug bypass so malformed or
+    # empty input still receives a useful error.
     melody = _melody_from_input(melody_input)
     melody_notes = _melody_to_note_dicts(melody)
     if not melody_notes:
         raise ValueError("Melody has no notes.")
+
+    if DEBUG_BYPASS_GENERATION:
+        resolved_tempo = tempo or float(melody.tempo)
+        resolved_key = key or melody.key
+        resolved_mode = mode or melody.mode
+        program = INSTRUMENTS.get(instrument, INSTRUMENTS["piano"])
+
+        warnings.append(
+            "DEBUG_BYPASS_GENERATION is enabled: all composition stages were "
+            "skipped and only the original melody was rendered."
+        )
+        if instrument not in INSTRUMENTS:
+            warnings.append(
+                f"Unknown instrument '{instrument}'; defaulting to piano. "
+                f"Options: {sorted(INSTRUMENTS)}"
+            )
+
+        # An empty chord list means there is no accompaniment track content;
+        # the untouched input melody is the only audible material.
+        render_accompaniment(
+            [],
+            midi_path,
+            style="block",
+            tempo=resolved_tempo,
+            beats_per_bar=beats_per_bar,
+            program=program,
+            melody_program=program,
+            melody_notes=melody_notes,
+        )
+
+        out_wav = None
+        if render_wav:
+            out_wav = wav_path or (midi_path.rsplit(".", 1)[0] + ".wav")
+            try:
+                from accompanist.audio.render import render_midi
+
+                render_midi(midi_path, out_wav)
+            except Exception as exc:
+                warnings.append(f"WAV rendering skipped: {exc}")
+                out_wav = None
+
+        return AccompanimentResult(
+            key=resolved_key,
+            mode=resolved_mode,
+            melody_notes=melody_notes,
+            progression=[],
+            midi_path=midi_path,
+            wav_path=out_wav,
+            warnings=warnings,
+        )
+
+    if style not in STYLES:
+        raise ValueError(f"Unknown style '{style}'. Choose from: {sorted(STYLES)}")
 
     # 2. Key detection (respect overrides / melody metadata; else auto-detect).
     resolved_key = key
