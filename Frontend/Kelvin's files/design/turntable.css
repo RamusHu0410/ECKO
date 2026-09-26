@@ -8,6 +8,20 @@
  * Light comes from the top-left: the top is brightest, the front face darker, the side darkest.
  * Nothing in here uses backdrop-filter: it is unreliable inside 3D transforms.
  */
+/* Registered so the birdview switch (slant → top-down) can transition smoothly instead of
+   snapping: without this, changing --tt-tilt/--tt-yaw recomputes the transform instantly. */
+@property --tt-tilt {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 52deg;
+}
+
+@property --tt-yaw {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 30deg;
+}
+
 @layer components {
   .tt-stage {
     --plate-d: calc(var(--plate-w) * var(--plate-depth-ratio));
@@ -32,6 +46,14 @@
     margin-top: calc(var(--plate-d) / -2);
     perspective: var(--tt-perspective);
     perspective-origin: 50% 0%;
+    transition: --tt-tilt 700ms ease, --tt-yaw 700ms ease;
+  }
+
+  /* Once the hum is pressed and uploaded, the turntable settles into a top-down birdview so
+     the adjustments panel can take over the space below it. */
+  .tt-stage[data-view="top-down"] .tt-body {
+    --tt-tilt: var(--tt-tilt-top-down);
+    --tt-yaw: var(--tt-yaw-top-down);
   }
 
   .tt-top,

@@ -1,3 +1,5 @@
 .aider*
 *.pyc
+__pycache__/
+backend/uploads/
 *.env

@@ -65,6 +65,8 @@
   --plinth-height-ratio: 0.12;
   --tt-tilt: 52deg;
   --tt-yaw: 30deg;
+  --tt-tilt-top-down: 6deg;
+  --tt-yaw-top-down: 0deg;
   --tt-perspective: 2000px;
   /* Walnut: the maple photo multiplied by this shade; faces darker away from the light */
   --wood-shade: #7d6452;
