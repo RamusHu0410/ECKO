@@ -5,6 +5,12 @@
 ## How to run backend flask python server
 uv run flask --app src/app:create_app run --port 8000
 
+cd backend
+export DATABASE_URL=sqlite:///$PWD/dev.db
+uv run flask --app src/app:create_app db upgrade --directory src/migrations
+uv run flask --app src/app:create_app run --port 8000
+
+
 
 Start the server (terminal 1)
 bash

@@ -9,6 +9,7 @@
     "test": "playwright test"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.27.0",
     "@fontsource/instrument-serif": "^5.3.0",
     "@react-three/fiber": "^9.8.1",
     "motion": "^13.4.4",
