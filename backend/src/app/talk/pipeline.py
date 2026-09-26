@@ -1,4 +1,4 @@
-"""One talk turn: (recording →) words → Gemini → new settings and a reply to speak.
+"""One talk turn: (recording →) words → Gemini's edit → checked edit → new settings and a reply to speak.
 
 The pipeline never raises. If a service fails, the settings stay the same and the reply
 says so kindly. Speaking the reply is a separate step (see tts.py), so it can stream.
@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from . import phrases
 from .commands import Command
+from .edits import check, describe
 from .settings import SongSettings, apply_command, blocked_adjustments, changed_fields
 
 Understand = Callable[[str, SongSettings], Command]
@@ -26,6 +27,7 @@ class Turn:
     settings: SongSettings
     reply: str
     changed: list[str] = field(default_factory=list)
+    understood: list[str] = field(default_factory=list)  # what the edit did, e.g. "✓ Keep piano", "+ Add violin — soft, in the background"
     timings: dict[str, int] = field(default_factory=dict)
     error: str | None = None
 
@@ -35,6 +37,7 @@ class Turn:
             "intent": self.intent,
             "settings": self.settings.to_dict(),
             "changed": self.changed,
+            "understood": self.understood,
             "reply": self.reply,
             "timings": self.timings,
             "error": self.error,
@@ -77,19 +80,22 @@ class Pipeline:
 
 
 def _decide(text: str, command: Command, current: SongSettings, previous: SongSettings | None) -> Turn:
-    """Turns Gemini's answer into the new settings. Only 'adjust' and 'undo' may change anything."""
+    """Turns Gemini's answer into the new settings. Only 'adjust' and 'undo' may change anything,
+    and an edit is first checked against what the listener said (edits.py)."""
     if command.intent == "undo":
         if previous is None:
             return Turn(text, "undo", current, phrases.NOTHING_TO_UNDO)
-        return Turn(text, "undo", previous, command.reply or phrases.UNDONE, changed_fields(current, previous))
+        return Turn(text, "undo", previous, command.reply or phrases.UNDONE, changed_fields(current, previous), describe(current, previous))
     if command.intent != "adjust":
         fallback = phrases.NOTHING_TYPED if command.intent == "unclear" else phrases.OFF_TOPIC
         return Turn(text, command.intent, current, command.reply or fallback)
+    command, notes = check(command, current, text)
     updated = apply_command(current, command)
     changed = changed_fields(current, updated)
     if not changed:
-        return Turn(text, "adjust", current, phrases.already_there(blocked_adjustments(current, command)))
-    return Turn(text, "adjust", updated, command.reply or phrases.DONE, changed)
+        return Turn(text, "adjust", current, " ".join(notes) or phrases.already_there(blocked_adjustments(current, command)))
+    reply = phrases.done_but(notes) if notes else command.reply or phrases.DONE  # Gemini's reply described the edit before it was corrected
+    return Turn(text, "adjust", updated, reply, changed, describe(current, updated))
 
 
 def _finish(turn: Turn, timings: dict[str, int], started: float) -> Turn:

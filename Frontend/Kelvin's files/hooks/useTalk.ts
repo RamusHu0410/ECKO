@@ -29,6 +29,7 @@ const SHORTEST_TALK_MS = 300
 export function useTalk({ settings, update, remakeSong }: TalkOptions) {
   const [phase, setPhase] = useState<TalkPhase>('idle')
   const [reply, setReply] = useState('')
+  const [understood, setUnderstood] = useState<string[]>([])
   const [problem, setProblem] = useState<TalkProblem | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
   const latest = useRef({ settings, update, remakeSong })
@@ -53,6 +54,7 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
         update(turn.settings)
       }
       setReply(turn.reply)
+      setUnderstood(turn.understood ?? [])
       setPhase('speaking')
       const remade = changed ? remakeSong(turn.settings).then(() => true, () => false) : Promise.resolve(true)
       voice.current ??= new Audio()
@@ -71,6 +73,7 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
     letGo.current = false
     setProblem(null)
     setReply('')
+    setUnderstood([])
     setElapsedMs(0)
     setPhase('listening')
     let stream: MediaStream
@@ -121,6 +124,8 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
     /** Listening, answering or remaking: the song waits and the mic can't start a new command. */
     busy: phase !== 'idle',
     reply,
+    /** What ECKO understood the last command to do, one line per instrument. */
+    understood,
     problem,
     secondsLeft: Math.ceil((MAX_RECORDING_MS - elapsedMs) / 1000),
     listen,

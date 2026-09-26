@@ -4,27 +4,37 @@ The hum is the WAV that POST /upload saved. analyze_audio_file turns it into not
 start and length in seconds) plus a tempo; the accompanist engine wants note times in beats and
 a few options. This file is the thin translation between the two:
 
-    speed   0 → 1   tempo from half to one and a half times the hum's (0.5 keeps it as hummed)
-    pitch   0 → 1   the tune moves down or up to an octave (0.5 keeps it as hummed)
-    emotion 0 → 1   below 0.4 minor, above 0.6 major, in between the hum's own mode
-    style           a genre word from talk mode, mapped to one of the engine's styles
-    extras          an instrument named in talk mode (strings, sax, guitar…) plays the song
+    speed        0 → 1   tempo from half to one and a half times the hum's (0.5 keeps it as hummed)
+    pitch        0 → 1   the tune moves down or up to an octave (0.5 keeps it as hummed)
+    emotion      0 → 1   below 0.4 minor, above 0.6 major, in between the hum's own mode
+    style                a genre word from talk mode, mapped to one of the engine's styles
+    instruments          the lead plays the engine's tune and chords; every other instrument gets a
+                         track of its own underneath: held chords, a bass line, or a drum beat
+    energy               the first or the second half played calmer or bigger
 
-The instruments come from the soundfont FluidSynth uses (ECKO_SOUNDFONT in backend/.env).
-FluidSynth renders very quietly, so the finished song is brought up to a normal volume.
+The engine writes the same notes for the same hum and settings (its jazz feel is random, so it
+gets the same seed every time). So adding an instrument leaves the others exactly as they were:
+it is one more MIDI track, not a new song. The instruments come from the soundfont FluidSynth
+uses (ECKO_SOUNDFONT in backend/.env). FluidSynth renders very quietly, so the finished song is
+brought up to a normal volume.
 """
 
 import io
 import os
+import random
 import tempfile
+import threading
 from functools import lru_cache
 
 import numpy as np
+import pretty_midi
 import soundfile
+from accompanist.audio.render import render_midi
 from accompanist.generate import generate_accompaniment
+from accompanist.music.chord_to_midi import chord_pitches
 
 from ..audio.processor import analyze_audio_file
-from .settings import SongSettings
+from .settings import DRUMS, PIANO, SongSettings, clean_label
 
 ENGINE_STYLE_FOR = {
     "pop": "pop",
@@ -46,25 +56,86 @@ ENGINE_STYLE_FOR = {
 }
 UNKNOWN_STYLE = "pop"  # a genre the engine doesn't know still gets a lively backing
 
-ENGINE_INSTRUMENT_FOR = {
-    "piano": "piano",
-    "guitar": "guitar",
-    "acoustic guitar": "guitar_steel",
-    "electric guitar": "guitar_clean",
-    "jazz guitar": "guitar_jazz",
-    "electric piano": "electric_piano",
-    "keys": "electric_piano",
-    "strings": "strings",
-    "violin": "strings",
-    "sax": "sax",
-    "saxophone": "sax",
+PROGRAMS = {  # the instruments ECKO can play, as General MIDI program numbers (every soundfont uses them)
+    "piano": 0,
+    "electric piano": 4,
+    "harpsichord": 6,
+    "celesta": 8,
+    "glockenspiel": 9,
+    "music box": 10,
+    "vibraphone": 11,
+    "marimba": 12,
+    "xylophone": 13,
+    "organ": 19,
+    "accordion": 21,
+    "harmonica": 22,
+    "guitar": 24,
+    "acoustic guitar": 25,
+    "jazz guitar": 26,
+    "electric guitar": 27,
+    "bass": 33,
+    "violin": 40,
+    "viola": 41,
+    "cello": 42,
+    "double bass": 43,
+    "harp": 46,
+    "strings": 48,
+    "choir": 52,
+    "trumpet": 56,
+    "trombone": 57,
+    "tuba": 58,
+    "french horn": 60,
+    "brass": 61,
+    "sax": 66,
+    "oboe": 68,
+    "bassoon": 70,
+    "clarinet": 71,
+    "flute": 73,
+    "recorder": 74,
+    "synth": 81,
+    "synth pad": 89,
+    "sitar": 104,
+    "banjo": 105,
+    DRUMS: 0,  # drums play on the drum channel, where the program number doesn't matter
 }
-INSTRUMENT_FOR_STYLE = {"rock": "guitar_clean", "jazz": "guitar_jazz", "lo-fi": "electric_piano", "orchestral": "strings"}
+OTHER_NAMES = {
+    "grand piano": "piano",
+    "keys": "electric piano",
+    "bells": "glockenspiel",
+    "ukulele": "guitar",
+    "bass guitar": "bass",
+    "upright bass": "double bass",
+    "contrabass": "double bass",
+    "string section": "strings",
+    "voices": "choir",
+    "horn": "french horn",
+    "saxophone": "sax",
+    "alto sax": "sax",
+    "tenor sax": "sax",
+    "pad": "synth pad",
+    "drum": DRUMS,
+    "drum kit": DRUMS,
+    "percussion": DRUMS,
+    "beat": DRUMS,
+}
+LOW = {"bass", "cello", "double bass", "trombone", "tuba", "bassoon"}  # these play a bass line instead of chords
+
+# MIDI channel volume by level. 100 is FluidSynth's own default, so an unchanged lead sounds as before.
+# Measured with the app's soundfont: a soft background part is about a fifth as loud as the lead,
+# and even a loud one stays under a normal lead.
+LEAD_VOLUME = {"soft": 70, "normal": 100, "loud": 127}
+BACKGROUND_VOLUME = {"soft": 50, "normal": 70, "loud": 90}
+CHORD_VELOCITY, BASS_VELOCITY = 80, 100
+BEAT = ((36, 100, (0, 4)), (38, 90, (2, 6)), (42, 60, range(8)))  # kick on beats 1 and 3, snare on 2 and 4, hi-hat on every eighth
+HIT_SECONDS = 0.1
+RELEASE_SECONDS = 0.03  # a held chord ends this much early, so the next one doesn't cut its ring short
+ENERGY_STEP = 0.2  # each step of energy plays that half's notes this much harder or softer
 
 PEAK_LEVEL = 0.9  # the loudest moment of the song, where 1.0 is full scale
 FALLBACK_HUM_TEMPO = 100.0  # when the hum's tempo can't be measured
 SENSIBLE_TEMPO = (40.0, 220.0)
 OCTAVE = 12
+_SEEDING = threading.Lock()  # random.seed is shared by the whole server
 
 
 def make_song(hum_path: str, settings: SongSettings) -> bytes:
@@ -72,13 +143,24 @@ def make_song(hum_path: str, settings: SongSettings) -> bytes:
     analysis = _analyze(hum_path, os.stat(hum_path).st_mtime_ns)
     if not analysis["melody"]:
         raise ValueError("No tune was found in that hum. Try humming a little louder.")
+    with tempfile.TemporaryDirectory() as folder:
+        midi_path, wav_path = os.path.join(folder, "song.mid"), os.path.join(folder, "song.wav")
+        write_midi(midi_path, analysis, settings, seed=hum_path)
+        try:
+            render_midi(midi_path, wav_path)
+        except Exception as exc:  # usually FluidSynth or its soundfont is missing
+            raise SongError(f"The song couldn't be turned into audio: {exc}") from exc
+        return _at_normal_volume(wav_path)
+
+
+def write_midi(midi_path: str, analysis: dict, settings: SongSettings, seed: str) -> None:
+    """The song as MIDI: the engine's tune and chords, then a track for each other instrument."""
     request = engine_request(analysis, settings)
     melody = {"melody": request.pop("melody"), "tempo": request["tempo"]}
-    with tempfile.TemporaryDirectory() as folder:
-        result = generate_accompaniment(melody, os.path.join(folder, "song.mid"), render_wav=True, **request)
-        if not result.wav_path:
-            raise SongError("The song couldn't be turned into audio. " + " ".join(result.warnings))
-        return _at_normal_volume(result.wav_path)
+    with _SEEDING:
+        random.seed(seed)  # the jazz style's feel is random; the same seed keeps it the same in every version
+        result = generate_accompaniment(melody, midi_path, **request)
+    arrange(midi_path, result.progression, settings, request["tempo"])
 
 
 def engine_request(analysis: dict, settings: SongSettings) -> dict:
@@ -98,7 +180,6 @@ def engine_request(analysis: dict, settings: SongSettings) -> dict:
             for note in analysis["melody"]
         ],
         "tempo": round(hum_tempo * (0.5 + settings.speed), 1),
-        "instrument": _instrument(settings),
     }
     if settings.style:
         request["style"] = ENGINE_STYLE_FOR.get(settings.style, UNKNOWN_STYLE)
@@ -107,6 +188,39 @@ def engine_request(analysis: dict, settings: SongSettings) -> dict:
     elif settings.emotion > 0.6:
         request["mode"] = "major"
     return request
+
+
+def arrange(midi_path: str, chords: list, settings: SongSettings, tempo: float) -> None:
+    """Gives the engine's two tracks (the tune and the chords) to the lead, and adds a track for
+    every other instrument, playing only in its section. Then shapes the energy of each half."""
+    song = pretty_midi.PrettyMIDI(midi_path)
+    lead = next((part for part in settings.instruments if part.role == "lead"), PIANO)
+    for track in song.instruments:
+        track.program = PROGRAMS.get(lead.name, 0)
+        _set_volume(track, LEAD_VOLUME[lead.level])
+    half = song.get_end_time() / 2
+    seconds_per_beat = 60 / tempo
+    for part in settings.instruments:
+        if part.role == "background" and part.name in PROGRAMS:
+            track = _beat(chords, seconds_per_beat) if part.name == DRUMS else _held_chords(part.name, chords, seconds_per_beat)
+            track.notes = [note for note in track.notes if _plays(part.section, note.start, half)]
+            _set_volume(track, BACKGROUND_VOLUME[part.level])
+            song.instruments.append(track)
+    for track in song.instruments:
+        for note in track.notes:
+            steps = settings.energy[0] if note.start < half else settings.energy[1]
+            note.velocity = max(1, min(127, round(note.velocity * (1 + ENERGY_STEP * steps))))
+    song.write(midi_path)
+
+
+def instrument_name(word) -> str | None:
+    """The name ECKO uses for an instrument ('violins' → 'violin', 'saxophone' → 'sax'), or None if it has no sound for it."""
+    label = clean_label(word) or ""
+    for name in (label, label[:-1] if label.endswith("s") else label):
+        name = OTHER_NAMES.get(name, name)
+        if name in PROGRAMS:
+            return name
+    return None
 
 
 def song_notes(hum_path: str, settings: SongSettings) -> dict:
@@ -128,15 +242,44 @@ class SongError(Exception):
     """The engine made the song but couldn't render it to audio (usually FluidSynth is missing)."""
 
 
+def _held_chords(name: str, chords: list, seconds_per_beat: float) -> pretty_midi.Instrument:
+    """Each chord held for as long as it lasts. A low instrument holds just the chord's root, as a bass line."""
+    track = pretty_midi.Instrument(program=PROGRAMS[name], name=name)
+    for chord in chords:
+        start = chord.start * seconds_per_beat
+        end = (chord.start + chord.duration) * seconds_per_beat - RELEASE_SECONDS
+        pitches = chord_pitches(chord, octave=2)[:1] if name in LOW else chord_pitches(chord, octave=4)
+        velocity = BASS_VELOCITY if name in LOW else CHORD_VELOCITY
+        track.notes += [pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end) for pitch in pitches]
+    return track
+
+
+def _beat(chords: list, seconds_per_beat: float) -> pretty_midi.Instrument:
+    """A simple beat in eighth notes, for as long as the chords last."""
+    track = pretty_midi.Instrument(program=0, is_drum=True, name=DRUMS)
+    beats = max(chord.start + chord.duration for chord in chords)
+    for eighth in range(int(beats * 2)):
+        at = eighth / 2 * seconds_per_beat
+        for drum, velocity, eighths in BEAT:
+            if eighth % 8 in eighths:
+                track.notes.append(pretty_midi.Note(velocity=velocity, pitch=drum, start=at, end=at + HIT_SECONDS))
+    return track
+
+
+def _plays(section: str, at: float, half: float) -> bool:
+    if section == "start":
+        return at < half
+    if section == "end":
+        return at >= half
+    return True
+
+
+def _set_volume(track: pretty_midi.Instrument, volume: int) -> None:
+    track.control_changes.append(pretty_midi.ControlChange(number=7, value=volume, time=0.0))  # 7 = channel volume
+
+
 def _note(midi: float, start: float, duration: float) -> dict:
     return {"midi": round(midi, 2), "start": round(start, 3), "duration": round(duration, 3)}
-
-
-def _instrument(settings: SongSettings) -> str:
-    named = [ENGINE_INSTRUMENT_FOR[extra] for extra in settings.extras if extra in ENGINE_INSTRUMENT_FOR]
-    if named:
-        return named[-1]  # the most recently asked for
-    return INSTRUMENT_FOR_STYLE.get(settings.style or "", "piano")
 
 
 def _at_normal_volume(wav_path: str) -> bytes:

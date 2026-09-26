@@ -16,6 +16,8 @@ export interface TalkTurn {
   settings: SongSettings
   /** The settings that changed, e.g. ["speed"]; empty when nothing did. */
   changed: string[]
+  /** What an edit did to the song, e.g. ["✓ Keep piano", "+ Add violin — soft, in the background"]; empty when only the faders moved. */
+  understood: string[]
   reply: string
   error: string | null
   speech_id: string
