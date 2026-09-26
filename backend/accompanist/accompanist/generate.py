@@ -25,7 +25,7 @@ DEFAULT_BEATS_PER_BAR = 4.0
 # Debug bypass: while enabled, generate_accompaniment skips key detection,
 # modulation, melody editing, harmony, progression, voice leading, and style
 # generation. The output MIDI/WAV contains only the untouched input melody.
-DEBUG_BYPASS_GENERATION = True
+DEBUG_BYPASS_GENERATION = False
 
 
 @dataclass
