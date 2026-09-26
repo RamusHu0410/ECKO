@@ -718,26 +718,140 @@ def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
 
 
 MIN_VOICED_RATIO = 0.5  # a segment must be mostly confidently-pitched to count as a note
+MIN_NOTE_DURATION_SECONDS = 0.2  # shorter than this is noise, not a note
+MERGE_GAP_SECONDS = 0.12  # a hummer's brief breath/pause shouldn't split one note in two
 
 
-def _build_melody(
-    analysis: Dict[str, Any], min_voiced_ratio: float = MIN_VOICED_RATIO
+# ---------------------------------------------------------------------------
+# Shared note-building core.
+#
+# extract_notes() (the standalone debug/test tool) and _build_melody() (the
+# actual production path behind /talk/notes and /talk/song, which feeds the
+# accompanist package) used to have independently written, and independently
+# drifting, versions of this logic — _build_melody was missing both the
+# minimum-duration filter and the pause-merging extract_notes had. Since
+# _build_melody is what accompanist actually receives, that gap meant fixes
+# made to one never reached the real pipeline. Both now call these same
+# functions, so there is exactly one place that decides what counts as a note.
+# ---------------------------------------------------------------------------
+
+
+def _notes_from_segments(
+    segments: List[Dict[str, float]],
+    pitch_times: np.ndarray,
+    pitch_freqs: np.ndarray,
+    pitch_voiced: np.ndarray,
+    min_voiced_ratio: float = MIN_VOICED_RATIO,
 ) -> List[Dict[str, float]]:
-    """Convert detected sound segments into the MIDI-note API melody format.
+    """Turn detected sound segments into raw note candidates.
 
     A loud segment isn't necessarily a sung note — a mic pop, breath catch,
     or attack transient can be loud enough for `detect_sound_segments` to
-    flag it, without actually being pitched. Rather than guessing which
-    *position* an artifact would be at (dropping "the first note" turned out
-    to be wrong far more often than right: most recordings start right on
-    the user's real first note), each segment is judged on its own acoustic
-    evidence: it only becomes a melody note if most of its frames are
-    confidently voiced/pitched by PYIN, not just loud.
+    flag it, without actually being pitched. Each segment is judged on its
+    own acoustic evidence: it only becomes a candidate note if most of its
+    frames are confidently voiced/pitched by PYIN, not just loud — regardless
+    of where in the recording it falls.
+
+    Deliberately does *not* filter by duration or merge yet: that happens
+    afterward, so a hummer's brief pause splitting one note into two short
+    fragments doesn't cause both to be discarded as "too short" before they
+    get a chance to be merged back into one real note.
+
+    Returns dicts with: start, end, duration, pitch_hz (all in seconds/Hz).
+    """
+    candidates = []
+    for seg in segments:
+        seg_start, seg_end = float(seg["start"]), float(seg["end"])
+        in_segment = (pitch_times >= seg_start) & (pitch_times <= seg_end)
+        total_frames = int(np.sum(in_segment))
+        voiced_frames = int(np.sum(in_segment & pitch_voiced))
+        if total_frames == 0 or voiced_frames / total_frames < min_voiced_ratio:
+            continue  # mostly unpitched: a pop/breath/noise burst, not a note
+
+        seg_pitches = pitch_freqs[in_segment & pitch_voiced]
+        seg_pitches = seg_pitches[np.isfinite(seg_pitches) & (seg_pitches > 0)]
+        if not seg_pitches.size:
+            continue
+
+        candidates.append(
+            {
+                "start": seg_start,
+                "end": seg_end,
+                "duration": seg_end - seg_start,
+                "pitch_hz": float(np.median(seg_pitches)),
+            }
+        )
+    return candidates
+
+
+MAX_MERGE_SEMITONES = 0.5  # notes must be within a semitone to be "the same note"
+
+
+def _semitone_distance(freq_a: float, freq_b: float) -> float:
+    """Musical distance between two frequencies, in semitones. Using a
+    log-frequency (semitone) distance instead of a flat Hz threshold matters
+    because a semitone is only ~6Hz wide around 100Hz but ~26Hz wide around
+    440Hz — a fixed Hz cutoff either merges genuinely different adjacent
+    notes in the vocal register or fails to merge the same wavering note an
+    octave down."""
+    if freq_a <= 0 or freq_b <= 0:
+        return float("inf")
+    return abs(12.0 * np.log2(freq_b / freq_a))
+
+
+def _merge_close_notes(
+    notes: List[Dict[str, float]], merge_gap: float = MERGE_GAP_SECONDS
+) -> List[Dict[str, float]]:
+    """Merge consecutive notes separated by a brief pause (a hummer catching
+    their breath mid-note) into one, provided they're close enough in pitch
+    to plausibly be the same intended note — within half a semitone, not
+    just "close in Hz" (see ``_semitone_distance``). Mutates nothing; returns
+    a new list of shallow-copied note dicts."""
+    if merge_gap <= 0 or len(notes) < 2:
+        return [dict(n) for n in notes]
+
+    merged = [dict(notes[0])]
+    for nxt in notes[1:]:
+        cur = merged[-1]
+        gap = nxt["start"] - cur["end"]
+        same_pitch = _semitone_distance(cur["pitch_hz"], nxt["pitch_hz"]) < MAX_MERGE_SEMITONES
+        if gap < merge_gap and same_pitch:
+            cur["end"] = nxt["end"]
+            cur["duration"] = cur["end"] - cur["start"]
+            cur["pitch_hz"] = (cur["pitch_hz"] + nxt["pitch_hz"]) / 2
+            if "volume" in cur and "volume" in nxt:
+                cur["volume"] = (cur["volume"] + nxt["volume"]) / 2
+        else:
+            merged.append(dict(nxt))
+    return merged
+
+
+def _drop_short_notes(
+    notes: List[Dict[str, float]], min_duration: float = MIN_NOTE_DURATION_SECONDS
+) -> List[Dict[str, float]]:
+    """Drop anything shorter than min_duration: too brief to be a deliberate
+    note, more likely a stray blip. Applied after merging, so a note a brief
+    pause split into two short fragments is judged by its merged length."""
+    return [n for n in notes if n["duration"] >= min_duration]
+
+
+def _build_melody(
+    analysis: Dict[str, Any],
+    min_voiced_ratio: float = MIN_VOICED_RATIO,
+    merge_gap: float = MERGE_GAP_SECONDS,
+    min_note_duration: float = MIN_NOTE_DURATION_SECONDS,
+) -> List[Dict[str, float]]:
+    """Convert detected sound segments into the MIDI-note API melody format.
 
     Args:
         analysis: The ``process_audio`` result.
         min_voiced_ratio: Minimum fraction of a segment's frames that must be
             voiced for it to count as a real note (0 disables the filter).
+        merge_gap: Merge notes of similar pitch separated by less than this
+            gap (seconds) — a hummer's brief pause shouldn't fragment one
+            note into two (0 disables merging).
+        min_note_duration: Notes shorter than this (seconds), after merging,
+            are dropped as noise rather than deliberate notes.
     """
     pitch = analysis.get("pitch", {})
     if not isinstance(pitch, dict):
@@ -745,30 +859,23 @@ def _build_melody(
     times = np.asarray(pitch.get("times", []), dtype=float)
     frequencies = np.asarray(pitch.get("frequencies", []), dtype=float)
     voiced = np.asarray(pitch.get("voiced_flag", []), dtype=bool)
-    melody = []
 
-    for segment in analysis.get("segments", []):
-        start, end = float(segment["start"]), float(segment["end"])
-        in_segment = (times >= start) & (times <= end)
-        total_frames = int(np.sum(in_segment))
-        voiced_frames = int(np.sum(in_segment & voiced))
-        if total_frames == 0 or voiced_frames / total_frames < min_voiced_ratio:
-            continue  # mostly unpitched: a pop/breath/noise burst, not a note
+    notes = _notes_from_segments(
+        analysis.get("segments", []), times, frequencies, voiced, min_voiced_ratio
+    )
+    notes = _merge_close_notes(notes, merge_gap)
+    notes = _drop_short_notes(notes, min_note_duration)
 
-        values = frequencies[in_segment & voiced]
-        values = values[np.isfinite(values) & (values > 0)]
-        if values.size:
-            frequency_hz = float(np.median(values))
-            melody.append(
-                {
-                    # The accompaniment API historically calls this field ``hz``,
-                    # but its public contract uses MIDI note numbers (60 = C4).
-                    "hz": round(float(librosa.hz_to_midi(frequency_hz)), 2),
-                    "start": round(start, 3),
-                    "duration": round(float(segment["duration"]), 3),
-                }
-            )
-    return melody
+    return [
+        {
+            # The accompaniment API historically calls this field ``hz``,
+            # but its public contract uses MIDI note numbers (60 = C4).
+            "hz": round(float(librosa.hz_to_midi(n["pitch_hz"])), 2),
+            "start": round(n["start"], 3),
+            "duration": round(n["duration"], 3),
+        }
+        for n in notes
+    ]
 
 
 # Public alias: the API contract routes import, keeping ``_build_melody`` as the
@@ -864,8 +971,8 @@ def extract_notes(
     filepath: str,
     target_sr: int = 22050,
     top_db: float = 30,
-    min_note_duration: float = 0.05,
-    merge_gap: float = 0.05,
+    min_note_duration: float = MIN_NOTE_DURATION_SECONDS,
+    merge_gap: float = MERGE_GAP_SECONDS,
     min_voiced_ratio: float = MIN_VOICED_RATIO,
     debug: bool = False,
 ) -> list[dict[str, Any]]:
@@ -873,13 +980,21 @@ def extract_notes(
     Extract individual notes from a WAV file.
 
     Each note contains: start, end, duration, volume (RMS), pitch_hz (median).
+    Shares its note-building core (``_notes_from_segments`` /
+    ``_merge_close_notes`` / ``_drop_short_notes``) with ``_build_melody``,
+    the production path behind /talk/notes and /talk/song, so this debug tool
+    and the actual pipeline feeding the accompanist package always agree on
+    what counts as a note.
 
     Args:
         filepath: Path to WAV file
         target_sr: Target sample rate
         top_db: Silence threshold for segment detection
-        min_note_duration: Minimum note duration in seconds
-        merge_gap: Merge notes separated by less than this gap (seconds)
+        min_note_duration: Notes shorter than this (seconds), after merging,
+            are dropped as noise rather than deliberate notes.
+        merge_gap: Merge notes of similar pitch separated by less than this
+            gap (seconds) — a hummer's brief pause shouldn't fragment one
+            note into two (0 disables merging).
         min_voiced_ratio: Minimum fraction of a segment's frames that must be
             confidently pitched for it to count as a real note, not just a
             loud mic pop/breath/noise burst that happened to pass the
@@ -916,68 +1031,32 @@ def extract_notes(
     vol_times = np.array(volume_data.get("times", []))
     vol_rms = np.array(volume_data.get("rms_values", []))
 
-    notes = []
+    notes = _notes_from_segments(
+        segments, pitch_times, pitch_freqs, pitch_voiced, min_voiced_ratio
+    )
 
-    for seg in segments:
-        seg_start = seg["start"]
-        seg_end = seg["end"]
-        seg_dur = seg["duration"]
-
-        if seg_dur < min_note_duration:
-            continue
-
-        # --- Is this actually a pitched note, or just a loud noise burst? ---
-        in_segment = (pitch_times >= seg_start) & (pitch_times <= seg_end)
-        total_frames = int(np.sum(in_segment))
-        voiced_frames = int(np.sum(in_segment & pitch_voiced))
-        if total_frames == 0 or voiced_frames / total_frames < min_voiced_ratio:
-            continue  # mostly unpitched: a pop/breath/noise burst, not a note
-
-        # --- Pitch: median of voiced frames within segment ---
-        pitch_mask = in_segment & pitch_voiced
-        seg_pitches = pitch_freqs[pitch_mask]
-        note_pitch = float(np.nanmedian(seg_pitches)) if len(seg_pitches) > 0 else 0.0
-
-        # --- Volume: mean RMS within segment ---
-        vol_mask = (vol_times >= seg_start) & (vol_times <= seg_end)
+    # --- Volume: mean RMS within each candidate note, before merging ---
+    for note in notes:
+        vol_mask = (vol_times >= note["start"]) & (vol_times <= note["end"])
         seg_volumes = vol_rms[vol_mask]
-        note_volume = float(np.mean(seg_volumes)) if len(seg_volumes) > 0 else 0.0
+        note["volume"] = float(np.mean(seg_volumes)) if seg_volumes.size else 0.0
 
-        notes.append(
-            {
-                "start": round(seg_start, 3),
-                "end": round(seg_end, 3),
-                "duration": round(seg_dur, 3),
-                "volume": round(note_volume, 6),
-                "pitch_hz": round(note_pitch, 1),
-            }
-        )
+    # Merge across brief pauses first, *then* drop short notes — a pause that
+    # splits one note into two short fragments must be judged by the merged
+    # length, not have each half discarded before it gets a chance to rejoin.
+    notes = _merge_close_notes(notes, merge_gap)
+    notes = _drop_short_notes(notes, min_note_duration)
 
-    # Merge notes that are very close together (same pitch-ish)
-    if merge_gap > 0 and len(notes) > 1:
-        merged = []
-        current = notes[0]
-        for next_note in notes[1:]:
-            gap = next_note["start"] - current["end"]
-            pitch_diff = abs(next_note["pitch_hz"] - current["pitch_hz"])
-            # Merge if gap is small AND pitch is similar (within 5% or 30Hz)
-            if gap < merge_gap and (
-                pitch_diff < 30 or pitch_diff / max(current["pitch_hz"], 1) < 0.05
-            ):
-                current["end"] = next_note["end"]
-                current["duration"] = round(current["end"] - current["start"], 3)
-                # Average volume and pitch
-                current["volume"] = round(
-                    (current["volume"] + next_note["volume"]) / 2, 6
-                )
-                current["pitch_hz"] = round(
-                    (current["pitch_hz"] + next_note["pitch_hz"]) / 2, 1
-                )
-            else:
-                merged.append(current)
-                current = next_note
-        merged.append(current)
-        notes = merged
+    notes = [
+        {
+            "start": round(n["start"], 3),
+            "end": round(n["end"], 3),
+            "duration": round(n["duration"], 3),
+            "volume": round(n["volume"], 6),
+            "pitch_hz": round(n["pitch_hz"], 1),
+        }
+        for n in notes
+    ]
 
     if debug:
         console_print(f"Extracted {len(notes)} notes", "SUCCESS")

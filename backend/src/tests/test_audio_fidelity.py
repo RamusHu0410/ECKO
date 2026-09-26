@@ -248,6 +248,141 @@ class TestRealNoteFiltering:
         assert melody[0]["start"] == pytest.approx(0.0)
 
 
+class TestPauseTolerance:
+    """A hummer catching their breath mid-note shouldn't fragment one
+    intended note into two. Applies to both extract_notes (debug path) and
+    _build_melody (the production path feeding accompanist), since they now
+    share the same merge logic — this used to only work in extract_notes."""
+
+    def test_extract_notes_merges_across_a_brief_same_pitch_pause(self, tmp_path):
+        path = tmp_path / "breath_pause.wav"
+        # One intended note, interrupted by a 60ms breath catch: well under
+        # MERGE_GAP_SECONDS (120ms) and clearly the same pitch.
+        audio = np.concatenate([_tone(440.0, 0.3), _silence(0.06), _tone(440.0, 0.3)])
+        _write_wav(path, audio)
+
+        notes = extract_notes(str(path), target_sr=SR)
+
+        assert len(notes) == 1, f"expected one merged note, got {notes}"
+        assert notes[0]["pitch_hz"] == pytest.approx(440.0, rel=0.05)
+        assert notes[0]["duration"] > 0.5  # spans both halves plus the pause
+
+    def test_build_melody_merges_across_a_brief_same_pitch_pause(self):
+        """Direct unit test of the shared merge step used by the production
+        melody path: two same-pitch segments 60ms apart must merge into one
+        melody note instead of reaching the accompanist as two."""
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.3, "duration": 0.3},
+                {"start": 0.36, "end": 0.66, "duration": 0.3},  # 60ms gap
+            ],
+            "pitch": {
+                "times": [0.1, 0.2, 0.4, 0.5],
+                "frequencies": [261.63, 261.63, 261.63, 261.63],
+                "voiced_flag": [True, True, True, True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 1
+        assert melody[0]["duration"] == pytest.approx(0.66, abs=1e-6)
+
+    def test_does_not_merge_a_pause_between_genuinely_different_notes(self):
+        """The pitch check must be semitone-aware: E4 and F4 are only ~20Hz
+        apart, well under a naive flat-Hz threshold, but they are different
+        notes and a brief gap between them must not glue them together."""
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.3, "duration": 0.3},
+                {"start": 0.36, "end": 0.66, "duration": 0.3},  # 60ms gap
+            ],
+            "pitch": {
+                "times": [0.1, 0.2, 0.4, 0.5],
+                "frequencies": [329.63, 329.63, 349.23, 349.23],  # E4, F4
+                "voiced_flag": [True, True, True, True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 2
+
+    def test_does_not_merge_across_a_long_pause(self):
+        """A gap long enough to be a real rest (not a breath catch) must not
+        be merged even at the same pitch."""
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.3, "duration": 0.3},
+                {"start": 0.8, "end": 1.1, "duration": 0.3},  # 500ms gap
+            ],
+            "pitch": {
+                "times": [0.1, 0.2, 0.9, 1.0],
+                "frequencies": [261.63, 261.63, 261.63, 261.63],
+                "voiced_flag": [True, True, True, True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 2
+
+
+class TestMinimumNoteDuration:
+    """Anything shorter than ~200ms is noise (a click, a stray blip), not a
+    deliberate note — for both the debug tool and the production path."""
+
+    def test_extract_notes_drops_a_blip_shorter_than_200ms(self, tmp_path):
+        path = tmp_path / "blip_and_note.wav"
+        blip = _tone(440.0, 0.1)  # 100ms: below the 200ms floor
+        real_note = _tone(523.25, 0.4)  # 400ms: a real note
+        audio = np.concatenate([blip, _silence(0.3), real_note])
+        _write_wav(path, audio)
+
+        notes = extract_notes(str(path), target_sr=SR)
+
+        assert len(notes) == 1, f"the sub-200ms blip should be dropped, got {notes}"
+        assert notes[0]["pitch_hz"] == pytest.approx(523.25, rel=0.05)
+
+    def test_extract_notes_keeps_a_note_at_or_above_200ms(self, tmp_path):
+        path = tmp_path / "short_but_valid.wav"
+        _write_wav(path, _tone(440.0, 0.25))  # 250ms: above the floor
+
+        notes = extract_notes(str(path), target_sr=SR)
+
+        assert len(notes) == 1
+        assert notes[0]["pitch_hz"] == pytest.approx(440.0, rel=0.05)
+
+    def test_build_melody_drops_a_note_shorter_than_200ms(self):
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.1, "duration": 0.1},  # 100ms blip
+                {"start": 0.3, "end": 0.7, "duration": 0.4},  # real note
+            ],
+            "pitch": {
+                "times": [0.05, 0.5],
+                "frequencies": [440.0, 261.63],
+                "voiced_flag": [True, True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 1
+        assert melody[0]["start"] == pytest.approx(0.3)
+
+    def test_a_pause_split_note_is_judged_by_its_merged_length(self):
+        """A note a brief pause splits into two ~120ms fragments (each under
+        the 200ms floor alone) must survive once merged back together —
+        merging has to happen before the duration filter, not after."""
+        analysis = {
+            "segments": [
+                {"start": 0.0, "end": 0.12, "duration": 0.12},
+                {"start": 0.17, "end": 0.29, "duration": 0.12},  # 50ms gap
+            ],
+            "pitch": {
+                "times": [0.06, 0.23],
+                "frequencies": [261.63, 261.63],
+                "voiced_flag": [True, True],
+            },
+        }
+        melody = _build_melody(analysis)
+        assert len(melody) == 1, f"merged fragments should total >200ms, got {melody}"
+        assert melody[0]["duration"] == pytest.approx(0.29, abs=1e-6)
+
+
 class TestVibratoFidelity:
     """A hummed note wavers in pitch and loudness (vibrato/tremolo) instead of
     holding perfectly steady. The pipeline should still recover the intended
