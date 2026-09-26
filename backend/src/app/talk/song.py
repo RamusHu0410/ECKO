@@ -1,8 +1,8 @@
 """Makes the song from the user's own hum, with the song settings translated for the engine.
 
 The hum is the WAV that POST /upload saved. analyze_audio_file turns it into notes (MIDI pitch,
-start and length in seconds) plus a tempo; the accompanist engine wants note times in beats and
-a few options. This file is the thin translation between the two:
+start and length in seconds) plus a tempo; app.audio.handoff turns those into beats on a
+sixteenth-note grid, the way the accompanist engine counts. This file adds the song settings:
 
     speed        0 → 1   tempo from half to one and a half times the hum's (0.5 keeps it as hummed)
     pitch        0 → 1   the tune moves down or up to an octave (0.5 keeps it as hummed)
@@ -33,6 +33,7 @@ from accompanist.audio.render import render_midi
 from accompanist.generate import generate_accompaniment
 from accompanist.music.chord_to_midi import chord_pitches
 
+from ..audio.handoff import seconds_from_engine, sensible_tempo, to_engine_melody
 from ..audio.processor import analyze_audio_file
 from .settings import DEFAULT_LEAD, DRUMS, SongSettings, clean_label
 
@@ -132,14 +133,13 @@ RELEASE_SECONDS = 0.03  # a held chord ends this much early, so the next one doe
 ENERGY_STEP = 0.2  # each step of energy plays that half's notes this much harder or softer
 
 PEAK_LEVEL = 0.9  # the loudest moment of the song, where 1.0 is full scale
-FALLBACK_HUM_TEMPO = 100.0  # when the hum's tempo can't be measured
-SENSIBLE_TEMPO = (40.0, 220.0)
 OCTAVE = 12
 _SEEDING = threading.Lock()  # random.seed is shared by the whole server
 
 
 def make_song(hum_path: str, settings: SongSettings) -> bytes:
-    """The song as WAV bytes. Raises ValueError if the hum has no tune, SongError if it can't be heard."""
+    """The song as WAV bytes. Raises ValueError if the hum has no tune (or isn't a usable
+    recording: AudioInputError is a ValueError), SongError if it can't be heard."""
     analysis = _analyze(hum_path, os.stat(hum_path).st_mtime_ns)
     if not analysis["melody"]:
         raise ValueError("No tune was found in that hum. Try humming a little louder.")
@@ -165,20 +165,11 @@ def write_midi(midi_path: str, analysis: dict, settings: SongSettings, seed: str
 
 def engine_request(analysis: dict, settings: SongSettings) -> dict:
     """The generate_accompaniment arguments for this hum with these settings."""
-    hum_tempo = analysis.get("tempo") or 0.0
-    if not SENSIBLE_TEMPO[0] <= hum_tempo <= SENSIBLE_TEMPO[1]:
-        hum_tempo = FALLBACK_HUM_TEMPO
-    beats_per_second = hum_tempo / 60
+    hum_tempo = sensible_tempo(analysis.get("tempo"))
     shift = round((settings.pitch - 0.5) * 2 * OCTAVE)
     request = {
-        "melody": [
-            {
-                "hz": min(127.0, max(0.0, note["hz"] + shift)),  # the engine's "hz" holds MIDI note numbers
-                "start": note["start"] * beats_per_second,
-                "duration": note["duration"] * beats_per_second,
-            }
-            for note in analysis["melody"]
-        ],
+        # the engine's "hz" holds MIDI note numbers; the rhythm is counted at the hum's own tempo
+        "melody": to_engine_melody(analysis["melody"], hum_tempo, shift=shift),
         "tempo": round(hum_tempo * (0.5 + settings.speed), 1),
     }
     if settings.style:
@@ -229,12 +220,13 @@ def song_notes(hum_path: str, settings: SongSettings) -> dict:
 
 
 def notes_from(analysis: dict, settings: SongSettings) -> dict:
-    """Both lists as MIDI pitch with start and length in seconds, so they share one time axis."""
+    """Both lists as MIDI pitch with start and length in seconds, so they share one time axis
+    (the song's first note is placed where the hum's first note was)."""
     request = engine_request(analysis, settings)
-    seconds_per_beat = 60 / request["tempo"]
+    first = min((n["start"] for n in analysis["melody"]), default=0.0)
     return {
         "sung": [_note(n["hz"], n["start"], n["duration"]) for n in analysis["melody"]],
-        "played": [_note(n["hz"], n["start"] * seconds_per_beat, n["duration"] * seconds_per_beat) for n in request["melody"]],
+        "played": [_note(n["hz"], n["start"], n["duration"]) for n in seconds_from_engine(request["melody"], request["tempo"], first)],
     }
 
 
