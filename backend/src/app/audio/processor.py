@@ -258,23 +258,40 @@ class AudioProcessor:
         """
         self._debug_print(f"Extracting pitch (fmin={fmin}Hz, fmax={fmax}Hz)", "PROCESS")
 
+        # A hummed note wavers in pitch (vibrato) rather than holding steady.
+        # self.frame_length (2048 samples, ~93ms at 22050Hz) is sized for
+        # spectral/volume features, but a window that wide spans a large
+        # fraction of a typical vibrato cycle (5-7Hz, ~150-200ms period).
+        # PYIN then estimates one f0 per window by pooling a moving pitch
+        # into a single period-length guess, which biases the estimate
+        # upward as the vibrato swing widens (confirmed empirically: a
+        # +/-100Hz wobble around 440Hz drifted the recovered median to
+        # ~465Hz with the wider window, vs ~447Hz with this one). Use a
+        # window short enough to resolve the wobble, floored at the two
+        # periods of fmin PYIN needs for a stable estimate at all.
+        min_frame_for_fmin = int(np.ceil(2 * sr / fmin))
+        pitch_frame_length = max(min_frame_for_fmin, min(self.frame_length, int(sr * 0.05)))
+        pitch_hop_length = max(1, pitch_frame_length // 4)
+
         # Use PYIN for pitch detection
-        self._debug_print("Running librosa.pyin...")
+        self._debug_print(
+            f"Running librosa.pyin (frame_length={pitch_frame_length}, hop_length={pitch_hop_length})..."
+        )
         start_time = time.time()
         f0, voiced_flag, voiced_probs = librosa.pyin(
             audio,
             fmin=fmin,
             fmax=fmax,
             sr=sr,
-            frame_length=self.frame_length,
-            hop_length=self.hop_length,
+            frame_length=pitch_frame_length,
+            hop_length=pitch_hop_length,
         )
         pyin_time = time.time() - start_time
         self._debug_print(f"PYIN completed in {pyin_time:.3f}s")
 
         # Get time stamps for each frame
         times = librosa.frames_to_time(
-            np.arange(len(f0)), sr=sr, hop_length=self.hop_length
+            np.arange(len(f0)), sr=sr, hop_length=pitch_hop_length
         )
 
         # Filter only voiced frames
@@ -302,7 +319,7 @@ class AudioProcessor:
             "median_hz": float(np.nanmedian(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
             "min_hz": float(np.nanmin(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
             "max_hz": float(np.nanmax(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
-            "voiced_duration": float(np.sum(voiced_flag) * self.hop_length / sr),
+            "voiced_duration": float(np.sum(voiced_flag) * pitch_hop_length / sr),
             "total_frames": len(f0),
             "voiced_frames": int(np.sum(voiced_flag)),
         }
