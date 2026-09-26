@@ -14,12 +14,10 @@ from accompanist.music.chord_to_midi import chord_pitches
 from accompanist.music.styles import STYLES
 from accompanist.music.voice_leading import lead_voices
 
-DEFAULT_PROGRAM = 0       # Acoustic Grand Piano (accompaniment)
+DEFAULT_PROGRAM = 81      # Lead 2 (sawtooth) — default synth accompaniment
 DEFAULT_VELOCITY = 100    # accompaniment base — loud, but under the melody
-# Melody sits clearly on top: louder than the accompaniment, and in a
-# distinct timbre (flute) so it doesn't blend into a piano accompaniment
-# even where a chord tone happens to share the melody's pitch.
-MELODY_PROGRAM = 73       # Flute — distinct from the piano/guitar accompaniment
+# Melody uses the same synth family by default and remains relatively louder.
+MELODY_PROGRAM = 81       # Lead 2 (sawtooth)
 MELODY_VELOCITY = 127     # loudest — the melody line leads
 ACCOMP_VELOCITY_SCALE = 1.0
 # Force every accompaniment note to this fixed velocity so per-style dynamic
@@ -39,7 +37,9 @@ NOTE_RELEASE_SECONDS = 0.03
 
 # Named General MIDI instruments (program numbers) for convenience.
 INSTRUMENTS: dict[str, int] = {
-    "piano": 0,             # Acoustic Grand Piano
+    "synth": 81,             # Lead 2 (sawtooth) — default
+    "synth_pad": 88,         # Pad 1 (new age) — softer sustained synth
+    "piano": 0,              # Acoustic Grand Piano
     "guitar": 24,           # Acoustic Guitar (nylon)
     "guitar_steel": 25,     # Acoustic Guitar (steel)
     "guitar_jazz": 26,      # Electric Guitar (jazz)

@@ -3,7 +3,7 @@
 import pytest
 
 from app.talk.commands import Adjustment, Change, Command, NewInstrument
-from app.talk.settings import PIANO, Part, SongSettings, apply_command, blocked_adjustments, changed_fields, clean_label, move_dial
+from app.talk.settings import DEFAULT_LEAD, PIANO, Part, SongSettings, apply_command, blocked_adjustments, changed_fields, clean_label, move_dial
 
 
 def command(*changes, style=None, add=(), remove=(), change=()):
@@ -84,7 +84,7 @@ def test_from_dict_reads_and_clamps_what_the_page_sends():
         "speed": 0.5,
         "pitch": 0.5,
         "style": None,
-        "instruments": [PIANO_DICT],
+        "instruments": [SYNTH_DICT],
         "energy": {"start": 0, "end": 0},
     }
 
@@ -93,11 +93,12 @@ def test_from_dict_always_gives_the_song_one_lead():
     no_lead = SongSettings.from_dict({"instruments": [{"name": "violin", "role": "background", "level": "soft", "section": "end"}]})
     assert no_lead.instruments == (Part("violin", "lead", "soft", "all"),)  # the lead plays the whole song
     only_drums = SongSettings.from_dict({"instruments": [{"name": "drums", "role": "lead", "level": "soft", "section": "all"}]})
-    assert only_drums.instruments == (PIANO, Part("drums"))
-    assert SongSettings.from_dict({"instruments": []}).instruments == (PIANO,)
+    assert only_drums.instruments == (DEFAULT_LEAD, Part("drums"))
+    assert SongSettings.from_dict({"instruments": []}).instruments == (DEFAULT_LEAD,)
 
 
 PIANO_DICT = {"name": "piano", "role": "lead", "level": "normal", "section": "all"}
+SYNTH_DICT = {"name": "synth", "role": "lead", "level": "normal", "section": "all"}
 
 
 @pytest.mark.parametrize(

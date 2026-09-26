@@ -34,7 +34,7 @@ from accompanist.generate import generate_accompaniment
 from accompanist.music.chord_to_midi import chord_pitches
 
 from ..audio.processor import analyze_audio_file
-from .settings import DRUMS, PIANO, SongSettings, clean_label
+from .settings import DEFAULT_LEAD, DRUMS, SongSettings, clean_label
 
 ENGINE_STYLE_FOR = {
     "pop": "pop",
@@ -194,9 +194,9 @@ def arrange(midi_path: str, chords: list, settings: SongSettings, tempo: float) 
     """Gives the engine's two tracks (the tune and the chords) to the lead, and adds a track for
     every other instrument, playing only in its section. Then shapes the energy of each half."""
     song = pretty_midi.PrettyMIDI(midi_path)
-    lead = next((part for part in settings.instruments if part.role == "lead"), PIANO)
+    lead = next((part for part in settings.instruments if part.role == "lead"), DEFAULT_LEAD)
     for track in song.instruments:
-        track.program = PROGRAMS.get(lead.name, 0)
+        track.program = PROGRAMS.get(lead.name, PROGRAMS["synth"])
         _set_volume(track, LEAD_VOLUME[lead.level])
     half = song.get_end_time() / 2
     seconds_per_beat = 60 / tempo

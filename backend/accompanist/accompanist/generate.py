@@ -83,7 +83,7 @@ def generate_accompaniment(
     beats_per_bar: float = DEFAULT_BEATS_PER_BAR,
     include_melody: bool = True,
     allow_edit_melody: bool = False,
-    instrument: str = "piano",
+    instrument: str = "synth",
     modulate_to_key: Optional[str] = None,
     modulate_to_mode: Optional[str] = None,
     render_wav: bool = False,
@@ -109,8 +109,9 @@ def generate_accompaniment(
             snapping pitches to the style's scale and (for jazz) applying a
             swung, ornamented feel. If False (default), the melody is left
             exactly as given and only the accompaniment reflects the style.
-        instrument: Named instrument for playback, e.g. "piano", "guitar",
-            "guitar_jazz", "strings", "sax". Applies to both tracks.
+        instrument: Named instrument for playback, e.g. "synth", "synth_pad",
+            "piano", "guitar", "guitar_jazz", "strings", "sax". Applies to
+            both tracks; defaults to "synth".
         modulate_to_key: Transpose the whole piece to this tonic (e.g. "G").
             The melody is shifted and the harmony re-derived in the new key.
         modulate_to_mode: Switch to this mode ("major"/"minor"). Combined with
@@ -134,7 +135,7 @@ def generate_accompaniment(
         resolved_tempo = tempo or float(melody.tempo)
         resolved_key = key or melody.key
         resolved_mode = mode or melody.mode
-        program = INSTRUMENTS.get(instrument, INSTRUMENTS["piano"])
+        program = INSTRUMENTS.get(instrument, INSTRUMENTS["synth"])
 
         warnings.append(
             "DEBUG_BYPASS_GENERATION is enabled: all composition stages were "
@@ -142,7 +143,7 @@ def generate_accompaniment(
         )
         if instrument not in INSTRUMENTS:
             warnings.append(
-                f"Unknown instrument '{instrument}'; defaulting to piano. "
+                f"Unknown instrument '{instrument}'; defaulting to synth. "
                 f"Options: {sorted(INSTRUMENTS)}"
             )
 
@@ -251,10 +252,10 @@ def generate_accompaniment(
     )
 
     # 8-9. Style pattern -> MIDI (with the chosen instrument on both tracks)
-    program = INSTRUMENTS.get(instrument, INSTRUMENTS["piano"])
+    program = INSTRUMENTS.get(instrument, INSTRUMENTS["synth"])
     if instrument not in INSTRUMENTS:
         warnings.append(
-            f"Unknown instrument '{instrument}'; defaulting to piano. "
+            f"Unknown instrument '{instrument}'; defaulting to synth. "
             f"Options: {sorted(INSTRUMENTS)}"
         )
     render_accompaniment(

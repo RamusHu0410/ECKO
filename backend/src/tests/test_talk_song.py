@@ -8,7 +8,7 @@ import pytest
 from accompanist.music.styles import STYLES
 from talk_fakes import write_hum
 
-from app.talk.settings import PIANO, Part, SongSettings
+from app.talk.settings import DEFAULT_LEAD, PIANO, Part, SongSettings
 from app.talk.song import (
     BACKGROUND_VOLUME,
     ENERGY_STEP,
@@ -109,15 +109,15 @@ def middle_of(song: list[tuple]) -> float:
     return max(note[2] for track in song[:2] for note in track[3]) / 2
 
 
-def test_the_first_song_is_the_engines_song_on_piano(tmp_path):
+def test_the_first_song_is_the_engines_song_on_synth(tmp_path):
     song = tracks(tmp_path, SongSettings())
-    assert [track[:3] for track in song] == [(0, False, 100), (0, False, 100)]  # chords and tune, at the synth's usual volume
+    assert [track[:3] for track in song] == [(81, False, 100), (81, False, 100)]  # chords and tune on the default synth
 
 
 @pytest.mark.parametrize("style", [None, "jazz"])  # jazz plays random fills, so this also checks the seed
 def test_adding_instruments_leaves_the_lead_note_for_note(tmp_path, style):
     before = tracks(tmp_path, SongSettings(style=style))
-    after = tracks(tmp_path, SongSettings(style=style, instruments=(PIANO, Part("violin"), Part("cello"), Part("drums"))))
+    after = tracks(tmp_path, SongSettings(style=style, instruments=(DEFAULT_LEAD, Part("violin"), Part("cello"), Part("drums"))))
     assert after[:2] == before
     assert len(after) == 5
 

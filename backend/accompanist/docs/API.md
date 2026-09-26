@@ -32,7 +32,7 @@ List the available accompaniment styles.
 
 **Response `200`**
 ```json
-{ "styles": ["cinematic", "classical", "piano", "pop"] }
+{ "styles": ["asian_folk", "cinematic", "classical", "jazz", "piano", "pop"] }
 ```
 
 ---
@@ -51,7 +51,8 @@ Generate an accompaniment for a melody.
 | `key`     | string  | no       | auto-detected | Tonic, e.g. `"C"`, `"G"`, `"F#"`. If omitted, the key is detected from the melody. |
 | `mode`    | string  | no       | auto-detected | `"major"` or `"minor"`. |
 | `tempo`   | number  | no       | `120`         | Beats per minute. |
-| `style`   | string  | no       | `"classical"` | One of `piano`, `pop`, `cinematic`, `classical`. |
+| `style`   | string  | no       | `"classical"` | One of `piano`, `pop`, `cinematic`, `classical`, `jazz`, `asian_folk`. |
+| `instrument` | string | no      | `"synth"`     | Playback instrument. Common choices: `synth` (GM sawtooth lead), `synth_pad`, `piano`, `guitar`, `guitar_jazz`, `strings`, `sax`. |
 | `format`  | string  | no       | `"midi"`      | `"midi"`, `"wav"`, or `"json"`. |
 
 **Note object** (inside `melody`)
@@ -77,6 +78,7 @@ curl -X POST http://127.0.0.1:5000/accompaniment/generate \
           {"hz": 72, "start": 3, "duration": 1}
         ],
         "style": "classical",
+        "instrument": "synth",
         "format": "midi"
       }' \
   --output accompaniment.mid
@@ -112,7 +114,7 @@ curl -X POST http://127.0.0.1:5000/accompaniment/generate \
 | Status | When | Body |
 |--------|------|------|
 | `400`  | Missing/invalid `melody` | `{"error": "Request must be JSON with a 'melody' array."}` |
-| `400`  | Unknown `style` | `{"error": "Unknown style 'jazz'.", "available_styles": [...]}` |
+| `400`  | Unknown `style` | `{"error": "Unknown style 'reggae'.", "available_styles": [...]}` |
 | `400`  | Invalid `format` | `{"error": "format must be 'midi', 'wav', or 'json'."}` |
 | `400`  | Empty melody / bad input | `{"error": "Melody has no notes."}` |
 | `503`  | WAV requested but FluidSynth/soundfont missing | `{"error": "WAV rendering unavailable ..."}` |
@@ -131,7 +133,8 @@ melody JSON
   → score each candidate against the bar's melody notes
   → progression optimization (Viterbi + transition rules)
   → voice leading (classical style)
-  → style pattern (piano / pop / cinematic / classical)
+  → style pattern (piano / pop / cinematic / classical / jazz / asian_folk)
+  → default synth playback (or the requested instrument)
   → MIDI
   → WAV (optional)
 ```

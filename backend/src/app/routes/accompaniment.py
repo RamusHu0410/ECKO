@@ -32,7 +32,8 @@ def generate():
           "key":   "C",         # optional; auto-detected if omitted
           "mode":  "major",     # optional
           "tempo": 120,          # optional
-          "style": "classical", # optional: piano|pop|cinematic|classical
+          "style": "classical", # optional: piano|pop|cinematic|classical|jazz|asian_folk
+          "instrument": "synth", # optional; synth is the default
           "format": "midi"       # optional: "midi" (default) | "wav" | "json"
         }
 
@@ -62,8 +63,8 @@ def generate():
     _raw_allow = data.get("allow_edit_melody", "no")
     allow_edit_melody = str(_raw_allow).strip().lower() in ("yes", "true", "1")
 
-    # instrument: named GM instrument for playback (piano, guitar, ...).
-    instrument = data.get("instrument", "piano")
+    # instrument: named GM instrument for playback (synth, piano, guitar, ...).
+    instrument = data.get("instrument", "synth")
 
     # modulation: optionally transpose the whole piece to a new key/mode.
     modulate = data.get("modulate") or {}
