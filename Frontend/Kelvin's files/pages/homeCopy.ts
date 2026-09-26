@@ -2,7 +2,6 @@
 import type { SessionPhase } from '../hooks/useRecordSession'
 import type { MicProblem } from '../hooks/useRecorder'
 import type { UploadFailureKind } from '../api/uploadHum'
-import type { GenerateFailureKind } from '../api/generateAccompaniment'
 import type { Mode } from '../hooks/useMode'
 import type { TalkPhase, TalkProblem } from '../hooks/useTalk'
 
@@ -26,13 +25,16 @@ export function micLabel(mode: Mode): string {
     : 'Microphone. Hold it, or hold the space bar, to hum for up to 10 seconds.'
 }
 
-export function micCaption(phase: SessionPhase, mode: Mode, holding: boolean, secondsLeft: number): string {
+/** Under the mic, except in talk mode once there's a song to change (see talkCaption). */
+export function micCaption(phase: SessionPhase, mode: Mode, holding: boolean, secondsLeft: number, answering: boolean): string {
   if (phase === 'requesting') return 'Allow the microphone'
   if (phase === 'recording') {
     return holding ? `${clock(secondsLeft)} · release to stop` : `${clock(secondsLeft)} · tap the mic to stop`
   }
   if (mode === 'talk') return phase === 'idle' ? 'Hum a tune first, then talk to change it.' : ''
+  if (answering) return 'One moment, ECKO is still answering…'
   if (phase === 'idle') return 'Hold to hum'
+  if (phase === 'ready' || phase === 'failed') return 'Hold to hum a new tune'
   return ''
 }
 
@@ -85,16 +87,6 @@ export const MIC_HELP: Record<MicProblem, { title: string; body: string }> = {
   },
 }
 
-/** What went wrong composing the accompaniment, in plain words. Non-blocking: the record still plays, just silently. */
-export const ACCOMPANIMENT_HELP: Record<GenerateFailureKind, string> = {
-  unreachable: 'The ECKO server isn’t answering, so there’s no sound yet.',
-  timeout: 'Composing the song took too long, so there’s no sound yet.',
-  unavailable: 'Audio rendering isn’t set up on the server yet, so there’s no sound yet.',
-  rejected: 'The server couldn’t compose a song from this hum.',
-  server: 'The server ran into a problem composing your song.',
-  unexpected: 'Something unexpected happened composing your song.',
-}
-
 export const UPLOAD_FAILED_TITLE = 'We couldn’t press your record'
 
 /** What went wrong, in plain words. showDetail adds the technical detail in small print. */
@@ -106,4 +98,19 @@ export const UPLOAD_HELP: Record<UploadFailureKind, { body: string; showDetail: 
   rejected: { body: 'The server didn’t accept your recording.', showDetail: true },
   server: { body: 'The server ran into a problem with your recording.', showDetail: true },
   unexpected: { body: 'Something unexpected came back from the server.', showDetail: true },
+}
+
+/** The intro at the top of the page: what ECKO is, and its three steps as the tracks on side A. */
+export const INTRO = {
+  /** Set on two lines. */
+  title: ['Hum a tune.', 'Get a song.'],
+  lede: 'ECKO turns a few seconds of humming into a finished song and presses it onto a record. Then you talk to it to change how it sounds.',
+  side: 'Side A · How it works',
+  tracks: [
+    { title: 'Hum into the mic', body: 'Hold the microphone and hum for up to ten seconds. Any tune in your head will do.' },
+    { title: 'We press it into a record', body: 'Your hum becomes a song and is pressed onto vinyl while you watch.' },
+    { title: 'Talk to change it', body: 'Say what you’d like: “add strings behind the piano”, or “make the ending bigger”.' },
+  ],
+  start: 'Hum your first tune',
+  scroll: 'Scroll to the studio',
 }
