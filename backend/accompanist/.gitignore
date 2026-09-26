@@ -1,0 +1,12 @@
+# Large binary soundfonts – download locally, don't commit
+soundfonts/*.sf2
+
+# Rendered/test audio and midi artifacts
+*.wav
+*.mid
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

@@ -3,7 +3,9 @@ name = "accompanist"
 version = "0.1.0"
 description = "AI accompanist backend"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "pretty-midi>=0.2.11",
+]
 
 [dependency-groups]
 dev = [
