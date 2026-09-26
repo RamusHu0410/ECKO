@@ -14,7 +14,10 @@ from accompanist.music.chord_candidates import get_candidates
 from accompanist.music.chord_scoring import score_chord, _chord_pitch_classes
 from accompanist.music.chord_selection import choose_best_chord, _root_pc
 from accompanist.music.progression_rules import transition_score
-from accompanist.music.segmentation import segment_by_bar, DEFAULT_BEATS_PER_BAR
+from accompanist.music.segmentation import (
+    segment_by_slot,
+    DEFAULT_BEATS_PER_BAR,
+)
 
 
 def _melody_fit(chord: Chord, pitches: list[int], key: str, mode: str) -> float:
@@ -41,41 +44,107 @@ def generate_progression(
     beats_per_bar: float = DEFAULT_BEATS_PER_BAR,
     num_bars: int | None = None,
     use_rules: bool = True,
+    chords_per_bar: int = 2,
 ) -> list[Chord]:
-    """Build a chord progression: one chord per bar.
+    """Build a chord progression that follows the melody's harmonic rhythm.
+
+    The melody is segmented at `chords_per_bar` slots per bar, a chord is chosen
+    per slot (so the harmony can change mid-bar when the melody does), and then
+    adjacent identical chords are merged back into longer chords. This fixes
+    bars whose notes belong to two different chords (e.g. Twinkle's "F F E E"),
+    which a single per-bar chord could not match.
 
     Args:
         melody_notes: Notes as dicts with "pitch"/"start"/"duration".
         key: Tonic of the surrounding key.
         mode: "major" or "minor".
         beats_per_bar: Bar length in quarter lengths.
-        num_bars: Force this many bars/chords (else inferred).
+        num_bars: Force this many bars (else inferred).
         use_rules: If True, apply progression rules (repeat penalty, common
-            transitions, cadence) via a Viterbi DP. If False, pick each bar's
+            transitions, cadence) via a Viterbi DP. If False, pick each slot's
             best chord greedily and independently.
+        chords_per_bar: Harmonic-rhythm resolution. 1 = one chord per bar,
+            2 = allow a change at the half-bar (default), etc.
 
     Returns:
-        A list of Chord objects, one per bar, with start/duration spanning each
-        bar.
+        A list of Chord objects with start/duration spanning each held chord.
     """
-    segments = segment_by_bar(melody_notes, beats_per_bar, num_bars)
+    chords_per_bar = max(1, int(chords_per_bar))
 
+    # Pass 1: choose one chord per bar over the whole piece (context-aware DP).
+    bar_segments = segment_by_slot(melody_notes, beats_per_bar, num_bars)
+    if not bar_segments:
+        return []
     if use_rules:
-        chords = _viterbi(segments, key, mode)
+        bar_chords = _viterbi(bar_segments, key, mode)
     else:
-        chords = [
+        bar_chords = [
             choose_best_chord([n["pitch"] for n in seg], key, mode)
             if seg else _tonic_chord(key, mode)
-            for seg in segments
+            for seg in bar_segments
         ]
 
+    # Pass 2: only subdivide a bar whose single chord poorly fits its melody.
+    # Bars that a whole-bar chord already matches stay as one chord — so clean,
+    # unambiguous bars are never split needlessly.
     progression: list[Chord] = []
-    for i, chord in enumerate(chords):
-        chord = copy(chord)
-        chord.start = i * beats_per_bar
-        chord.duration = beats_per_bar
-        progression.append(chord)
+    for i, bar_chord in enumerate(bar_chords):
+        bar_start = i * beats_per_bar
+        bar_notes_i = bar_segments[i]
+
+        if chords_per_bar > 1 and _bar_needs_split(bar_chord, bar_notes_i, key, mode):
+            progression.extend(
+                _split_bar(bar_notes_i, bar_start, beats_per_bar,
+                           chords_per_bar, key, mode)
+            )
+        else:
+            chord = copy(bar_chord)
+            chord.start = bar_start
+            chord.duration = beats_per_bar
+            progression.append(chord)
+
     return progression
+
+
+def _bar_needs_split(chord: Chord, notes: list[dict], key: str, mode: str) -> bool:
+    """True if the whole-bar chord clashes with too much of the bar's melody."""
+    if not notes:
+        return False
+    chord_pcs = _chord_pitch_classes(chord)
+    clashes = sum(1 for n in notes if n["pitch"] % 12 not in chord_pcs)
+    # Split only when most of the bar's notes don't belong to the chord.
+    return clashes > len(notes) / 2
+
+
+def _split_bar(notes, bar_start, beats_per_bar, chords_per_bar, key, mode):
+    """Re-harmonize one bar at finer resolution, merging identical slots."""
+    slot_beats = beats_per_bar / chords_per_bar
+    # Local, bar-relative slots.
+    rel = [
+        {"pitch": n["pitch"], "start": n["start"] - bar_start,
+         "duration": n["duration"]}
+        for n in notes
+    ]
+    slot_segs = segment_by_slot(rel, slot_beats, chords_per_bar)
+    slot_chords = [
+        choose_best_chord([n["pitch"] for n in seg], key, mode)
+        if seg else _tonic_chord(key, mode)
+        for seg in slot_segs
+    ]
+
+    out: list[Chord] = []
+    slot = 0
+    while slot < len(slot_chords):
+        sym = slot_chords[slot].symbol
+        run = 1
+        while slot + run < len(slot_chords) and slot_chords[slot + run].symbol == sym:
+            run += 1
+        chord = copy(slot_chords[slot])
+        chord.start = bar_start + slot * slot_beats
+        chord.duration = run * slot_beats
+        out.append(chord)
+        slot += run
+    return out
 
 
 def _viterbi(segments: list[list[dict]], key: str, mode: str) -> list[Chord]:
