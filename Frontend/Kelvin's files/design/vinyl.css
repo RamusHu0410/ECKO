@@ -1,0 +1,76 @@
+/*
+ * The finished record. The grooves spin (vinyl-spin) while the reflections stay still
+ * above them (vinyl-sheen); fixed light over a turning disc is what makes vinyl read as real.
+ */
+@layer components {
+  /* Turntable motor: ease into 33⅓ rpm, then keep turning at a steady speed */
+  .vinyl-spin {
+    animation:
+      vinyl-spin-up var(--duration-spin-up) var(--ease-motor-start) both,
+      vinyl-spin var(--duration-rotation) linear var(--duration-spin-up) infinite;
+  }
+
+  /* Soft angled highlights, masked off the paper label and the outer lip */
+  .vinyl-sheen {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    mix-blend-mode: screen;
+    transition: opacity var(--duration-press-vinyl) ease;
+    background:
+      radial-gradient(55% 40% at 30% 20%, var(--color-sheen-soft), transparent 70%),
+      conic-gradient(
+        from 28deg,
+        transparent 0deg,
+        var(--color-sheen) 16deg,
+        transparent 40deg,
+        transparent 180deg,
+        var(--color-sheen) 196deg,
+        transparent 220deg
+      );
+    -webkit-mask-image: radial-gradient(
+      circle closest-side,
+      transparent calc(var(--vinyl-label-size) + 1%),
+      #000 calc(var(--vinyl-label-size) + 4%),
+      #000 95%,
+      transparent 98%
+    );
+    mask-image: radial-gradient(
+      circle closest-side,
+      transparent calc(var(--vinyl-label-size) + 1%),
+      #000 calc(var(--vinyl-label-size) + 4%),
+      #000 95%,
+      transparent 98%
+    );
+  }
+
+  .vinyl-sheen[data-visible="true"] {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vinyl-spin {
+      animation: none;
+    }
+  }
+}
+
+@keyframes vinyl-spin-up {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(var(--spin-up-angle));
+  }
+}
+
+@keyframes vinyl-spin {
+  from {
+    transform: rotate(var(--spin-up-angle));
+  }
+  to {
+    transform: rotate(calc(var(--spin-up-angle) + 360deg));
+  }
+}

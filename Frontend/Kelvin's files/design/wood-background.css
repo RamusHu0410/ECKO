@@ -1,0 +1,26 @@
+/*
+ * The light wood tabletop. App.tsx sets --wood-texture when assets/textures/wood-light.jpg
+ * exists; without it the table stays a warm neutral color (never a fake stripe pattern).
+ */
+@layer components {
+  .wood-background {
+    position: relative;
+    z-index: 0;
+    min-height: 100dvh;
+    background-color: var(--color-wood);
+    background-image: var(--wood-texture, none);
+    background-repeat: repeat;
+    background-size: var(--wood-tile-size) auto;
+    background-position: center top;
+  }
+
+  /* Tabletop under a lamp: the edges fall off slightly darker */
+  .wood-background::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse 120% 90% at 50% 38%, transparent 52%, var(--color-vignette) 100%);
+  }
+}

@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from typing import Tuple, Optional, Dict, Any, List
 import logging
@@ -25,14 +26,31 @@ try:
 except ImportError:
     SOUNDFILE_AVAILABLE = False
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging to output to console
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger(__name__)
+
+def console_print(message: str, level: str = "INFO"):
+    """Print to console with timestamp and flush immediately."""
+    timestamp = time.strftime("%H:%M:%S")
+    prefix = {
+        "INFO": "ℹ️",
+        "DEBUG": "🔍",
+        "WARNING": "⚠️",
+        "ERROR": "❌",
+        "SUCCESS": "✅",
+        "PROCESS": "⚙️"
+    }.get(level, "📝")
+    print(f"[{timestamp}] {prefix} {message}", flush=True)
 
 class AudioProcessor:
     """Handles loading and processing of WAV audio files."""
     
-    def __init__(self, target_sr: int = 22050, hop_length: int = 512, frame_length: int = 2048, debug: bool = True):
+    def __init__(self, target_sr: int = 22050, hop_length: int = 512, frame_length: int = 2048, debug: bool = False):
         """
         Initialize audio processor.
         
@@ -48,10 +66,10 @@ class AudioProcessor:
         self.debug = debug
         self._check_dependencies()
     
-    def _debug_print(self, message: str):
+    def _debug_print(self, message: str, level: str = "DEBUG"):
         """Print debug message if debug mode is enabled."""
         if self.debug:
-            print(f"[AudioProcessor DEBUG] {message}")
+            console_print(message, level)
             logger.debug(message)
     
     def _check_dependencies(self):
@@ -67,13 +85,12 @@ class AudioProcessor:
         if not available:
             msg = "No audio processing libraries found. Install librosa, scipy, or soundfile."
             logger.warning(msg)
-            if self.debug:
-                print(f"[AudioProcessor WARNING] {msg}")
+            console_print(msg, "WARNING")
         else:
             msg = f"Audio processing libraries available: {', '.join(available)}"
             logger.info(msg)
             if self.debug:
-                print(f"[AudioProcessor INFO] {msg}")
+                console_print(msg, "SUCCESS")
     
     def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
         """
@@ -86,12 +103,12 @@ class AudioProcessor:
             Tuple of (audio_data, sample_rate)
             audio_data is mono float32 array normalized to [-1, 1]
         """
-        self._debug_print(f"Loading WAV file: {filepath}")
+        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
         start_time = time.time()
         
         if not os.path.exists(filepath):
             error_msg = f"WAV file not found: {filepath}"
-            self._debug_print(f"ERROR: {error_msg}")
+            self._debug_print(f"ERROR: {error_msg}", "ERROR")
             raise FileNotFoundError(error_msg)
         
         # Try different libraries in order of preference
@@ -103,11 +120,11 @@ class AudioProcessor:
             audio, sr = self._load_with_scipy(filepath)
         else:
             error_msg = "No audio processing library available. Install librosa, soundfile, or scipy."
-            self._debug_print(f"ERROR: {error_msg}")
+            self._debug_print(f"ERROR: {error_msg}", "ERROR")
             raise RuntimeError(error_msg)
         
         load_time = time.time() - start_time
-        self._debug_print(f"Loaded audio: {len(audio)} samples, {sr}Hz, duration: {len(audio)/sr:.2f}s (took {load_time:.3f}s)")
+        self._debug_print(f"Loaded audio: {len(audio)} samples, {sr}Hz, duration: {len(audio)/sr:.2f}s (took {load_time:.3f}s)", "SUCCESS")
         self._debug_print(f"Audio stats: min={np.min(audio):.4f}, max={np.max(audio):.4f}, mean={np.mean(audio):.4f}, std={np.std(audio):.4f}")
         
         return audio, sr
@@ -164,7 +181,7 @@ class AudioProcessor:
             else:
                 msg = f"Sample rate mismatch: file is {sr}Hz, target is {self.target_sr}Hz. Install librosa for automatic resampling."
                 logger.warning(msg)
-                self._debug_print(f"WARNING: {msg}")
+                self._debug_print(f"WARNING: {msg}", "WARNING")
         
         return audio, sr
     
@@ -215,7 +232,7 @@ class AudioProcessor:
                 }
             else:
                 error_msg = "No audio library available to get file info"
-                self._debug_print(f"ERROR: {error_msg}")
+                self._debug_print(f"ERROR: {error_msg}", "ERROR")
                 raise RuntimeError(error_msg)
         
         self._debug_print(f"Audio info: {result}")
@@ -236,12 +253,12 @@ class AudioProcessor:
         Returns:
             List of dicts with 'start', 'end', 'duration' for each sound segment
         """
-        self._debug_print(f"Detecting sound segments (top_db={top_db}, min_duration={min_duration}s)")
+        self._debug_print(f"Detecting sound segments (top_db={top_db}, min_duration={min_duration}s)", "PROCESS")
         
         if not LIBROSA_AVAILABLE:
             msg = "librosa not available, cannot detect sound segments"
             logger.warning(msg)
-            self._debug_print(f"WARNING: {msg}")
+            self._debug_print(f"WARNING: {msg}", "WARNING")
             return [{"start": 0.0, "end": len(audio) / sr, "duration": len(audio) / sr}]
         
         # Use librosa's silence detection
@@ -273,7 +290,7 @@ class AudioProcessor:
                 self._debug_print(f"    -> Filtered out (duration < {min_duration}s)")
         
         total_sound = sum(s["duration"] for s in segments)
-        self._debug_print(f"Final segments: {len(segments)}, total sound duration: {total_sound:.3f}s")
+        self._debug_print(f"Final segments: {len(segments)}, total sound duration: {total_sound:.3f}s", "SUCCESS")
         
         return segments
     
@@ -291,12 +308,12 @@ class AudioProcessor:
         Returns:
             Dict with pitch information
         """
-        self._debug_print(f"Extracting pitch (fmin={fmin}Hz, fmax={fmax}Hz)")
+        self._debug_print(f"Extracting pitch (fmin={fmin}Hz, fmax={fmax}Hz)", "PROCESS")
         
         if not LIBROSA_AVAILABLE:
             msg = "librosa not available, cannot extract pitch"
             logger.warning(msg)
-            self._debug_print(f"WARNING: {msg}")
+            self._debug_print(f"WARNING: {msg}", "WARNING")
             return {"frequencies": [], "times": [], "mean_hz": 0.0, "median_hz": 0.0}
         
         # Use PYIN for pitch detection
@@ -356,12 +373,12 @@ class AudioProcessor:
         Returns:
             Dict with volume envelope information
         """
-        self._debug_print("Extracting volume envelope (RMS energy)")
+        self._debug_print("Extracting volume envelope (RMS energy)", "PROCESS")
         
         if not LIBROSA_AVAILABLE:
             msg = "librosa not available, cannot extract volume envelope"
             logger.warning(msg)
-            self._debug_print(f"WARNING: {msg}")
+            self._debug_print(f"WARNING: {msg}", "WARNING")
             # Fallback: simple RMS per frame
             frame_length = min(self.frame_length, len(audio))
             hop_length = min(self.hop_length, frame_length // 4)
@@ -423,7 +440,7 @@ class AudioProcessor:
         Returns:
             Dict with spectral features
         """
-        self._debug_print("Extracting spectral features")
+        self._debug_print("Extracting spectral features", "PROCESS")
         
         if not LIBROSA_AVAILABLE:
             return {}
@@ -505,11 +522,12 @@ class AudioProcessor:
             extract_spectral: Whether to extract spectral features
             
         Returns:
-            Dict with processing results
+            Dict with processing results in a consistent structure
         """
-        self._debug_print(f"{'='*60}")
-        self._debug_print(f"PROCESSING AUDIO: {filepath}")
-        self._debug_print(f"{'='*60}")
+        if self.debug:
+            console_print(f"{'='*60}")
+            console_print(f"PROCESSING AUDIO: {filepath}")
+            console_print(f"{'='*60}")
         total_start = time.time()
         
         # Load audio
@@ -523,28 +541,36 @@ class AudioProcessor:
         rms_energy = np.sqrt(np.mean(audio**2))
         max_amplitude = np.max(np.abs(audio))
         
+        # Build results dictionary with consistent structure
         results = {
-            "filepath": filepath,
-            "duration": float(duration),
-            "sample_rate": sr,
-            "num_samples": len(audio),
-            "rms_energy": float(rms_energy),
-            "max_amplitude": float(max_amplitude),
-            "is_silent": rms_energy < 0.001,
-            "info": info
+            "file": {
+                "path": filepath,
+                "duration": float(duration),
+                "sample_rate": sr,
+                "num_samples": len(audio),
+                "rms_energy": float(rms_energy),
+                "max_amplitude": float(max_amplitude),
+                "is_silent": rms_energy < 0.001,
+                "info": info
+            },
+            "segments": [],
+            "pitch": {},
+            "volume": {},
+            "spectral": {},
+            "processing_time": 0.0
         }
         
-        self._debug_print(f"Basic stats: duration={duration:.2f}s, RMS={rms_energy:.6f}, max_amp={max_amplitude:.4f}, silent={results['is_silent']}")
+        self._debug_print(f"Basic stats: duration={duration:.2f}s, RMS={rms_energy:.6f}, max_amp={max_amplitude:.4f}, silent={results['file']['is_silent']}")
         
         # Detect sound segments (onset/offset)
         if detect_segments:
             seg_start = time.time()
             segments = self.detect_sound_segments(audio, sr)
             total_sound_duration = sum(s["duration"] for s in segments)
-            results["sound_segments"] = segments
-            results["total_sound_duration"] = float(total_sound_duration)
-            results["silence_ratio"] = float(1.0 - total_sound_duration / duration) if duration > 0 else 1.0
-            results["num_segments"] = len(segments)
+            results["segments"] = segments
+            results["file"]["total_sound_duration"] = float(total_sound_duration)
+            results["file"]["silence_ratio"] = float(1.0 - total_sound_duration / duration) if duration > 0 else 1.0
+            results["file"]["num_segments"] = len(segments)
             self._debug_print(f"Segment detection took {time.time() - seg_start:.3f}s")
         
         # Extract pitch
@@ -569,30 +595,279 @@ class AudioProcessor:
             self._debug_print(f"Spectral extraction took {time.time() - spec_start:.3f}s")
         
         total_time = time.time() - total_start
-        self._debug_print(f"{'='*60}")
-        self._debug_print(f"TOTAL PROCESSING TIME: {total_time:.3f}s")
-        self._debug_print(f"{'='*60}")
+        results["processing_time"] = round(total_time, 3)
+        
+        if self.debug:
+            console_print(f"{'='*60}")
+            console_print(f"TOTAL PROCESSING TIME: {total_time:.3f}s")
+            console_print(f"{'='*60}")
         
         logger.info(f"Processed audio: {filepath} ({duration:.2f}s, {sr}Hz, RMS: {rms_energy:.4f})")
         return results
 
 
-# Convenience function for simple usage
-def load_and_process_wav(filepath: str, target_sr: int = 22050, debug: bool = True, **kwargs) -> Dict[str, Any]:
+# =============================================================================
+# PUBLIC API FUNCTIONS - Import these from other files
+# =============================================================================
+
+def analyze_audio_file(
+    filepath: str,
+    target_sr: int = 22050,
+    detect_segments: bool = True,
+    extract_pitch: bool = True,
+    extract_volume: bool = True,
+    extract_spectral: bool = True,
+    debug: bool = False
+) -> Dict[str, Any]:
     """
-    Load and process a WAV file in one call.
+    Main entry point: Analyze a WAV file and return a structured dictionary.
+    
+    This is the function you should import and call from other Python files.
+    
+    Args:
+        filepath: Path to the WAV file
+        target_sr: Target sample rate (default 22050 Hz)
+        detect_segments: Detect sound/silence segments
+        extract_pitch: Extract fundamental frequency (pitch)
+        extract_volume: Extract volume envelope (RMS)
+        extract_spectral: Extract spectral features
+        debug: Enable debug output
+        
+    Returns:
+        Dictionary with this structure:
+        {
+            "file": {
+                "path": str,
+                "duration": float,
+                "sample_rate": int,
+                "num_samples": int,
+                "rms_energy": float,
+                "max_amplitude": float,
+                "is_silent": bool,
+                "total_sound_duration": float,
+                "silence_ratio": float,
+                "num_segments": int,
+                "info": {...}
+            },
+            "segments": [
+                {"start": float, "end": float, "duration": float},
+                ...
+            ],
+            "pitch": {
+                "frequencies": List[float],
+                "times": List[float],
+                "voiced_flag": List[bool],
+                "voiced_probabilities": List[float],
+                "mean_hz": float,
+                "median_hz": float,
+                "min_hz": float,
+                "max_hz": float,
+                "voiced_duration": float,
+                "total_frames": int,
+                "voiced_frames": int
+            },
+            "volume": {
+                "rms_values": List[float],
+                "rms_db": List[float],
+                "times": List[float],
+                "mean_rms": float,
+                "max_rms": float,
+                "mean_db": float,
+                "max_db": float,
+                "dynamic_range_db": float
+            },
+            "spectral": {
+                "spectral_centroid": {"values": [], "times": [], "mean": float, "std": float},
+                "spectral_rolloff": {"values": [], "mean": float, "std": float},
+                "spectral_bandwidth": {"values": [], "mean": float, "std": float},
+                "zero_crossing_rate": {"values": [], "mean": float, "std": float}
+            },
+            "processing_time": float
+        }
+        
+    Example:
+        from backend.src.app.audio.processor import analyze_audio_file
+        
+        result = analyze_audio_file("path/to/audio.wav")
+        print(result["pitch"]["mean_hz"])
+        print(result["segments"])
+    """
+    processor = AudioProcessor(target_sr=target_sr, debug=debug)
+    return processor.process_audio(
+        filepath=filepath,
+        detect_segments=detect_segments,
+        extract_pitch=extract_pitch,
+        extract_volume=extract_volume,
+        extract_spectral=extract_spectral
+    )
+
+
+def quick_analyze(filepath: str, target_sr: int = 22050) -> Dict[str, Any]:
+    """
+    Quick analysis with default settings (minimal output, no debug).
     
     Args:
         filepath: Path to WAV file
         target_sr: Target sample rate
-        debug: Enable debug output
-        **kwargs: Additional arguments passed to process_audio()
         
     Returns:
-        Dict with processing results
+        Simplified dictionary with key metrics only
     """
-    print(f"[load_and_process_wav] Starting processing of: {filepath}")
+    processor = AudioProcessor(target_sr=target_sr, debug=False)
+    full_result = processor.process_audio(
+        filepath=filepath,
+        detect_segments=True,
+        extract_pitch=True,
+        extract_volume=True,
+        extract_spectral=False  # Skip spectral for speed
+    )
+    
+    # Return simplified summary
+    return {
+        "file": full_result["file"],
+        "segments": full_result["segments"],
+        "pitch_summary": {
+            "mean_hz": full_result["pitch"].get("mean_hz", 0),
+            "median_hz": full_result["pitch"].get("median_hz", 0),
+            "min_hz": full_result["pitch"].get("min_hz", 0),
+            "max_hz": full_result["pitch"].get("max_hz", 0),
+            "voiced_frames": full_result["pitch"].get("voiced_frames", 0)
+        },
+        "volume_summary": {
+            "mean_rms": full_result["volume"].get("mean_rms", 0),
+            "max_rms": full_result["volume"].get("max_rms", 0),
+            "dynamic_range_db": full_result["volume"].get("dynamic_range_db", 0)
+        },
+        "processing_time": full_result["processing_time"]
+    }
+
+
+def extract_notes(
+    filepath: str,
+    target_sr: int = 22050,
+    top_db: float = 30,
+    min_note_duration: float = 0.05,
+    merge_gap: float = 0.05,
+    debug: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Extract individual notes from a WAV file.
+    
+    Each note contains: start, end, duration, volume (RMS), pitch_hz (median).
+    
+    Args:
+        filepath: Path to WAV file
+        target_sr: Target sample rate
+        top_db: Silence threshold for segment detection
+        min_note_duration: Minimum note duration in seconds
+        merge_gap: Merge notes separated by less than this gap (seconds)
+        debug: Enable debug output
+        
+    Returns:
+        List of note dicts with keys: start, end, duration, volume, pitch_hz
+    """
+    # Run full analysis
     processor = AudioProcessor(target_sr=target_sr, debug=debug)
-    result = processor.process_audio(filepath, **kwargs)
-    print(f"[load_and_process_wav] Completed processing: {filepath}")
+    result = processor.process_audio(
+        filepath=filepath,
+        detect_segments=True,
+        extract_pitch=True,
+        extract_volume=True,
+        extract_spectral=False
+    )
+    
+    segments = result.get("segments", [])
+    pitch_data = result.get("pitch", {})
+    volume_data = result.get("volume", {})
+    
+    if not segments:
+        if debug:
+            console_print("No sound segments found", "WARNING")
+        return []
+    
+    # Get pitch and volume time series
+    pitch_times = np.array(pitch_data.get("times", []))
+    pitch_freqs = np.array(pitch_data.get("frequencies", []))
+    pitch_voiced = np.array(pitch_data.get("voiced_flag", []))
+    
+    vol_times = np.array(volume_data.get("times", []))
+    vol_rms = np.array(volume_data.get("rms_values", []))
+    
+    notes = []
+    
+    for seg in segments:
+        seg_start = seg["start"]
+        seg_end = seg["end"]
+        seg_dur = seg["duration"]
+        
+        if seg_dur < min_note_duration:
+            continue
+        
+        # --- Pitch: median of voiced frames within segment ---
+        pitch_mask = (pitch_times >= seg_start) & (pitch_times <= seg_end) & pitch_voiced
+        seg_pitches = pitch_freqs[pitch_mask]
+        note_pitch = float(np.nanmedian(seg_pitches)) if len(seg_pitches) > 0 else 0.0
+        
+        # --- Volume: mean RMS within segment ---
+        vol_mask = (vol_times >= seg_start) & (vol_times <= seg_end)
+        seg_volumes = vol_rms[vol_mask]
+        note_volume = float(np.mean(seg_volumes)) if len(seg_volumes) > 0 else 0.0
+        
+        notes.append({
+            "start": round(seg_start, 3),
+            "end": round(seg_end, 3),
+            "duration": round(seg_dur, 3),
+            "volume": round(note_volume, 6),
+            "pitch_hz": round(note_pitch, 1)
+        })
+    
+    # Merge notes that are very close together (same pitch-ish)
+    if merge_gap > 0 and len(notes) > 1:
+        merged = []
+        current = notes[0]
+        for next_note in notes[1:]:
+            gap = next_note["start"] - current["end"]
+            pitch_diff = abs(next_note["pitch_hz"] - current["pitch_hz"])
+            # Merge if gap is small AND pitch is similar (within 5% or 30Hz)
+            if gap < merge_gap and (pitch_diff < 30 or pitch_diff / max(current["pitch_hz"], 1) < 0.05):
+                current["end"] = next_note["end"]
+                current["duration"] = round(current["end"] - current["start"], 3)
+                # Average volume and pitch
+                current["volume"] = round((current["volume"] + next_note["volume"]) / 2, 6)
+                current["pitch_hz"] = round((current["pitch_hz"] + next_note["pitch_hz"]) / 2, 1)
+            else:
+                merged.append(current)
+                current = next_note
+        merged.append(current)
+        notes = merged
+    
+    if debug:
+        console_print(f"Extracted {len(notes)} notes", "SUCCESS")
+        for i, n in enumerate(notes):
+            console_print(f"  Note {i}: {n['start']:.2f}s-{n['end']:.2f}s "
+                          f"dur={n['duration']:.2f}s vol={n['volume']:.4f} pitch={n['pitch_hz']:.1f}Hz")
+    
+    return notes
+
+
+# Backward compatibility
+def load_and_process_wav(filepath: str, target_sr: int = 22050, debug: bool = False, **kwargs) -> Dict[str, Any]:
+    """Backward compatibility wrapper."""
+    return analyze_audio_file(filepath, target_sr, debug=debug, **kwargs)
+
+
+# Standalone test function
+def test_audio_processor(filepath: str) -> Dict[str, Any]:
+    """Test function to verify the processor works."""
+    console_print(f"Testing audio processor with: {filepath}", "PROCESS")
+    result = analyze_audio_file(filepath, debug=True)
+    console_print("Test completed successfully!", "SUCCESS")
     return result
+
+
+if __name__ == "__main__":
+    # Allow running as script: python -m backend.src.app.audio.processor <file.wav>
+    if len(sys.argv) > 1:
+        test_audio_processor(sys.argv[1])
+    else:
+        console_print("Usage: python -m backend.src.app.audio.processor <path_to_wav_file>", "INFO")
