@@ -3,6 +3,7 @@ import { MAX_RECORDING_MS, useRecorder, type RecorderPhase } from './useRecorder
 import { LEVEL_SAMPLE_MS, useMicLevel } from './useMicLevel'
 import { useHumUpload, type UploadStatus } from './useHumUpload'
 import { useTurntable, type PlatterSpeed } from './useTurntable'
+import { useAccompaniment } from './useAccompaniment'
 import { readNumberToken } from '../design/readToken'
 
 /**
@@ -41,6 +42,7 @@ export function useRecordSession(reducedMotion: boolean) {
   const upload = useHumUpload()
   const phase = sessionPhase(recorder.phase, upload.status)
   const turntable = useTurntable(PLATTER_SPEED[phase], reducedMotion)
+  const accompaniment = useAccompaniment(upload.status === 'sent' ? (upload.reply?.melody ?? null) : null)
 
   // each finished recording is sent once, while the pressing animation plays
   const { send } = upload
@@ -48,24 +50,35 @@ export function useRecordSession(reducedMotion: boolean) {
     if (recorder.recording) send(recorder.recording)
   }, [recorder.recording, send])
 
+  // the platter and the accompaniment play/pause together, once the WAV is ready
+  const { status: accompanimentStatus, play: playAccompaniment, pause: pauseAccompaniment } = accompaniment
+  useEffect(() => {
+    if (phase !== 'ready' || accompanimentStatus !== 'ready') return
+    if (turntable.paused) pauseAccompaniment()
+    else playAccompaniment()
+  }, [phase, accompanimentStatus, turntable.paused, playAccompaniment, pauseAccompaniment])
+
   const { prime } = mic
   const { reset: resetUpload } = upload
+  const { reset: resetAccompaniment } = accompaniment
   const { rewind, togglePause } = turntable
   const { start, stop, reset: resetRecorder } = recorder
 
   const record = useCallback(() => {
     prime() // inside the tap: iOS only starts audio from a user gesture
     resetUpload()
+    resetAccompaniment()
     rewind()
     start()
-  }, [prime, resetUpload, rewind, start])
+  }, [prime, resetUpload, resetAccompaniment, rewind, start])
 
   /** Back to an empty glass disc (tonearm home, upload forgotten), ready for the next hum. */
   const reset = useCallback(() => {
     resetUpload()
+    resetAccompaniment()
     rewind()
     resetRecorder()
-  }, [resetUpload, rewind, resetRecorder])
+  }, [resetUpload, resetAccompaniment, rewind, resetRecorder])
 
   const tap = useCallback(() => {
     if (phase === 'recording') stop()
@@ -89,6 +102,7 @@ export function useRecordSession(reducedMotion: boolean) {
     paused: turntable.paused,
     micProblem: recorder.problem,
     uploadFailure: upload.failure,
+    accompanimentFailure: accompaniment.failure,
     tap,
     record,
     /** Ends the recording now (hold-to-record releases the mic). */

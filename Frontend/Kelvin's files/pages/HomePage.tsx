@@ -11,6 +11,7 @@ import { useSongSettings } from '../hooks/useSongSettings'
 import { useHoldToRecord } from '../hooks/useHoldToRecord'
 import { appear } from '../design/motion'
 import {
+  ACCOMPANIMENT_HELP,
   ANNOUNCEMENTS,
   MIC_HELP,
   MIC_LABEL,
@@ -31,7 +32,7 @@ export default function HomePage() {
   const session = useRecordSession(reducedMotion)
   const { mode, setMode } = useMode()
   const { settings, update } = useSongSettings()
-  const { phase, micProblem, uploadFailure } = session
+  const { phase, micProblem, uploadFailure, accompanimentFailure } = session
 
   const hold = useHoldToRecord({
     enabled: mode === 'talk' || phase === 'idle' || phase === 'recording',
@@ -111,6 +112,11 @@ export default function HomePage() {
                 body={MIC_HELP[micProblem].body}
                 actions={<GlassButton onClick={session.reset}>Try again</GlassButton>}
               />
+            )}
+            {phase === 'ready' && accompanimentFailure && (
+              <motion.p key="accompaniment-failed" className="glass-surface glass-control h-fit px-5 py-2 text-sm text-ink" {...appear}>
+                <span className="glass-content">{ACCOMPANIMENT_HELP[accompanimentFailure.kind]}</span>
+              </motion.p>
             )}
           </AnimatePresence>
         </div>

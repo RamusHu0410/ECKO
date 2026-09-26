@@ -9,6 +9,7 @@
  * prefix (vite.config.ts), so requests stay same-origin and need no CORS.
  */
 import { encodeWav } from '../audio/encodeWav'
+import type { MelodyNote } from './generateAccompaniment'
 
 const UPLOAD_URL = '/api/upload'
 /** Backend work can be slow; give up after this long. */
@@ -24,6 +25,8 @@ export interface HumUpload {
   saved_path: string
   /** Present when the backend analysed the hum. */
   audio_analysis?: HumAnalysis
+  /** Present when the backend analysed the hum: notes ready for POST /accompaniment/generate. */
+  melody?: MelodyNote[]
   /** Present when the file was saved but the backend couldn't analyse it. */
   processing_error?: string
   processing_time_seconds: number
