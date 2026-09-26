@@ -10,7 +10,7 @@ import uuid
 
 from flask import Blueprint, jsonify, request, send_file, current_app
 
-from accompanist.generate import generate_accompaniment
+from accompanist.generate import generate_accompaniment, debug_convert
 from accompanist.music.styles import STYLES
 
 bp = Blueprint("accompaniment", __name__)
@@ -44,6 +44,22 @@ def generate():
     data = request.get_json(silent=True)
     if not data or "melody" not in data:
         return jsonify({"error": "Request must be JSON with a 'melody' array."}), 400
+
+    # debug: short-circuit. Don't process/compose anything — just echo back the
+    # audio->data conversion so the frontend can see what the backend parsed.
+    _raw_debug = data.get("debug", False)
+    debug = str(_raw_debug).strip().lower() in ("yes", "true", "1")
+    if debug:
+        melody_input = {
+            "melody": data["melody"],
+            "key": data.get("key", "C"),
+            "mode": data.get("mode", "major"),
+            "tempo": data.get("tempo", 120),
+        }
+        report = debug_convert(melody_input)
+        report["mode_note"] = "debug: no composition or audio was generated"
+        status = 200 if report.get("ok") else 400
+        return jsonify(report), status
 
     style = data.get("style", "classical")
     if style not in STYLES:

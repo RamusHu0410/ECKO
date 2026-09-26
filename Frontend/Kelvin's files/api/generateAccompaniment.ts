@@ -111,6 +111,63 @@ export async function generateAccompaniment(
   return { url, blob }
 }
 
+/** What the backend parsed from the input — the "audio to data" conversion. */
+export interface DebugReport {
+  ok: boolean
+  /** Set when parsing failed. */
+  error?: string
+  note_count: number
+  parsed_notes: MelodyNote[]
+  pitch_range: { min: number; max: number } | null
+  time_span_beats: number
+  declared_key?: string | null
+  declared_mode?: string | null
+  declared_tempo?: number
+  detected_key?: string | null
+  detected_mode?: string | null
+  num_bars?: number
+  bars?: Array<{ bar: number; notes: MelodyNote[]; pitch_classes: number[] }>
+  mode_note?: string
+}
+
+/**
+ * Debug: ask the backend to show what it parsed from `melody` WITHOUT composing
+ * or rendering anything. Use this to see where a problem is (bad input data vs.
+ * bad composition) — e.g. wrong pitches, wrong timing, wrong detected key.
+ *
+ *   const report = await debugConvert(melody)
+ *   console.table(report.parsed_notes)
+ *   console.log('detected key:', report.detected_key, report.detected_mode)
+ */
+export async function debugConvert(
+  melody: MelodyNote[],
+  options: Pick<GenerateOptions, 'key' | 'mode' | 'tempo'> = {},
+  signal?: AbortSignal,
+): Promise<DebugReport> {
+  const body = JSON.stringify({ melody, debug: true, ...options })
+  devLog(`→ POST ${GENERATE_URL} (debug, ${melody.length} notes)`)
+
+  let response: Response
+  try {
+    const timeout = AbortSignal.timeout(TIMEOUT_MS)
+    response = await fetch(GENERATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    })
+  } catch (error) {
+    throw logFailure(toNetworkFailure(error))
+  }
+
+  const text = await response.text()
+  const report = parseJson(text) as DebugReport | null
+  if (!report) {
+    throw logFailure(new GenerateError('unexpected', `Debug reply wasn't JSON: ${text.slice(0, 200)}`))
+  }
+  return report
+}
+
 function toNetworkFailure(error: unknown): Error {
   if (error instanceof DOMException && error.name === 'AbortError') return error
   if (error instanceof DOMException && error.name === 'TimeoutError') {

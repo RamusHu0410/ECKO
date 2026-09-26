@@ -67,6 +67,81 @@ def _melody_to_note_dicts(melody: Melody) -> list[dict]:
     ]
 
 
+def debug_convert(melody_input) -> dict:
+    """Debug: show the audio->data conversion WITHOUT composing anything.
+
+    Returns exactly what the pipeline parsed from the input, so you can see
+    where a problem originates (bad input vs. bad composition):
+
+        * raw_input        - the melody dict/JSON as received
+        * note_count       - how many notes were parsed
+        * parsed_notes     - the notes as pitch/start/duration (in beats)
+        * pitch_range      - min/max MIDI pitch (or None if empty)
+        * time_span_beats  - total length in beats
+        * declared_key/mode/tempo - what the input asked for (if any)
+        * detected_key/mode       - what key detection infers from the notes
+        * segments_per_bar        - note pitch classes bucketed into 4-beat bars
+
+    No MIDI/WAV is produced and the melody is never modified.
+    """
+    # Parse the input the same way generate_accompaniment does.
+    try:
+        melody = _melody_from_input(melody_input)
+    except (ValueError, TypeError) as exc:
+        return {"ok": False, "stage": "parse", "error": str(exc)}
+
+    notes = _melody_to_note_dicts(melody)
+
+    info: dict = {
+        "ok": True,
+        "note_count": len(notes),
+        "parsed_notes": notes,
+        "declared_key": getattr(melody, "key", None),
+        "declared_mode": getattr(melody, "mode", None),
+        "declared_tempo": float(melody.tempo),
+    }
+
+    if not notes:
+        info["ok"] = False
+        info["error"] = "Melody has no notes."
+        info["pitch_range"] = None
+        info["time_span_beats"] = 0.0
+        return info
+
+    pitches = [n["pitch"] for n in notes]
+    info["pitch_range"] = {"min": min(pitches), "max": max(pitches)}
+    info["time_span_beats"] = max(n["start"] + n["duration"] for n in notes)
+
+    # Key detection on the raw notes (this is the "converter" result).
+    try:
+        detected = detect_key_from_notes(notes)
+        info["detected_key"] = detected.tonic.name.replace("-", "b")
+        info["detected_mode"] = detected.mode
+    except Exception as exc:  # noqa: BLE001
+        info["detected_key"] = None
+        info["detected_mode"] = None
+        info["key_detection_error"] = str(exc)
+
+    # Per-bar segmentation (pitch classes) so timing issues are visible.
+    from accompanist.music.segmentation import segment_by_slot
+
+    bars = segment_by_slot(notes, DEFAULT_BEATS_PER_BAR)
+    info["num_bars"] = len(bars)
+    info["bars"] = [
+        {
+            "bar": i + 1,
+            "notes": [
+                {"pitch": n["pitch"], "start": n["start"], "duration": n["duration"]}
+                for n in bar
+            ],
+            "pitch_classes": sorted({n["pitch"] % 12 for n in bar}),
+        }
+        for i, bar in enumerate(bars)
+    ]
+
+    return info
+
+
 def generate_accompaniment(
     melody_input,
     midi_path: str = "accompaniment.mid",
