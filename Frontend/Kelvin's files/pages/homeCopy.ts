@@ -1,32 +1,40 @@
-/* Every word the disc says: accessible labels, screen-reader announcements and help messages. */
-import type { SessionPhase } from '../../hooks/useRecordSession'
-import type { MicProblem } from '../../hooks/useRecorder'
-import type { UploadFailureKind } from '../../api/uploadHum'
+/* Every word the scene says: accessible labels, captions, announcements and help messages. */
+import type { SessionPhase } from '../hooks/useRecordSession'
+import type { MicProblem } from '../hooks/useRecorder'
+import type { UploadFailureKind } from '../api/uploadHum'
+import type { Mode } from '../hooks/useMode'
 
 export function discLabel(phase: SessionPhase, paused: boolean): string {
   switch (phase) {
-    case 'idle':
-      return 'Start recording. Hum for up to 10 seconds.'
-    case 'requesting':
-      return 'Waiting for microphone access'
+    case 'ready':
+      return paused ? 'Resume the record' : 'Pause the record'
     case 'recording':
-      return 'Stop recording'
+      return 'The disc is filling with your hum'
     case 'pressing':
     case 'waiting':
       return 'Pressing your record'
-    case 'ready':
-      return paused ? 'Resume the record' : 'Pause the record'
-    case 'failed':
-      return 'Your record couldn’t be pressed'
-    case 'mic-error':
-      return 'Try recording again'
+    default:
+      return 'Turntable with an empty glass disc'
   }
+}
+
+export const MIC_LABEL = 'Microphone. Hold it, or hold the space bar, to hum for up to 10 seconds.'
+
+export function micCaption(phase: SessionPhase, mode: Mode, holding: boolean, secondsLeft: number): string {
+  if (mode === 'talk') return 'Talk mode is coming soon. Switch to HUM to hum a tune.'
+  if (phase === 'requesting') return 'Allow the microphone'
+  if (phase === 'recording') {
+    const clock = `0:${String(secondsLeft).padStart(2, '0')}`
+    return holding ? `${clock} · release to stop` : `${clock} · tap the mic to stop`
+  }
+  if (phase === 'idle') return 'Hold to hum'
+  return ''
 }
 
 export const ANNOUNCEMENTS: Partial<Record<SessionPhase, string>> = {
   recording: 'Recording. Hum now.',
   waiting: 'Pressing your record.',
-  ready: 'Your record is ready. Tap it to pause.',
+  ready: 'Your record is playing. Tap it to pause.',
 }
 
 export const MIC_HELP: Record<MicProblem, { title: string; body: string }> = {

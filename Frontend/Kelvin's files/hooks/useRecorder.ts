@@ -21,6 +21,8 @@ export interface Recorder {
   problem: MicProblem | null
   start: () => void
   stop: () => void
+  /** Back to idle from a finished recording or a mic problem, ready to record again. */
+  reset: () => void
 }
 
 /**
@@ -130,6 +132,17 @@ export function useRecorder(pressDurationMs: number): Recorder {
     frameRef.current = requestAnimationFrame(tick)
   }, [fail, goTo, stop])
 
+  const reset = useCallback(() => {
+    const current = phaseRef.current
+    if (current === 'requesting' || current === 'recording' || current === 'pressing') return
+    cancelAnimationFrame(frameRef.current)
+    setRecording(null)
+    setElapsedMs(0)
+    setPressProgress(0)
+    setProblem(null)
+    goTo('idle')
+  }, [goTo])
+
   // release the mic and timers if the page goes away mid-recording
   useEffect(
     () => () => {
@@ -144,7 +157,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
     [],
   )
 
-  return { phase, elapsedMs, pressProgress, stream, recording, problem, start, stop }
+  return { phase, elapsedMs, pressProgress, stream, recording, problem, start, stop, reset }
 }
 
 function classifyMicError(error: unknown): MicProblem {

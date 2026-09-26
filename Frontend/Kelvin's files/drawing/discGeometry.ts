@@ -1,6 +1,6 @@
 /*
- * Shared shapes for the record disc drawing: the spiral the hum fills along, where notes
- * land, and small color and easing helpers. Everything here is pure.
+ * Shared shapes for the record disc drawing: the spiral the hum is pressed into (melody traces
+ * and note glints in the vinyl's grooves), and small color and easing helpers. All pure.
  */
 
 /** Colors and proportions, read from tokens.css. */
@@ -8,8 +8,9 @@ export interface DiscLook {
   fontFamily: string
   /** Label radius as a fraction of the disc radius. */
   labelRatio: number
-  fill: string
-  ink: string
+  liquid: string
+  liquidEdge: string
+  ripple: string
   glow: string
   vinyl: string
   vinylLip: string
@@ -52,7 +53,7 @@ export const TAU = Math.PI * 2
 const SPIRAL_OUTER = 0.9
 const SPIRAL_INNER = 0.38
 const SPIRAL_TURNS = 6
-export const SPIRAL_STEPS = 1500
+const SPIRAL_STEPS = 1500
 export const HOLE_RADIUS = 0.026
 
 // Melody lines ride the spiral like a loose staff. Offsets and swing are in spiral-band widths.
@@ -75,16 +76,11 @@ export function bandWidth(radius: number) {
 }
 
 /** Point on the spiral: u = 0 at the outer edge (12 o'clock), u = 1 at the inner end. */
-export function spiralAt(u: number, radius: number) {
+function spiralAt(u: number, radius: number) {
   return {
     radius: radius * (SPIRAL_OUTER - (SPIRAL_OUTER - SPIRAL_INNER) * u),
     angle: -Math.PI / 2 + u * SPIRAL_TURNS * TAU,
   }
-}
-
-export function spiralXY(u: number, center: number, radius: number) {
-  const point = spiralAt(u, radius)
-  return { x: center + Math.cos(point.angle) * point.radius, y: center + Math.sin(point.angle) * point.radius }
 }
 
 export function traceSpiral(

@@ -21,7 +21,8 @@ export default function DiscCanvas(props: DiscCanvasProps) {
 
     const pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO)
     const backingSize = Math.round(size.width * pixelRatio)
-    if (canvas.width !== backingSize) {
+    // check both sides: a fresh canvas is 300×150, so a 300px disc would otherwise keep height 150
+    if (canvas.width !== backingSize || canvas.height !== backingSize) {
       canvas.width = backingSize
       canvas.height = backingSize
     }
@@ -36,8 +37,9 @@ function readDiscLook(): DiscLook {
   return {
     fontFamily: readToken('--font-sans'),
     labelRatio: readNumberToken('--vinyl-label-size') / 100,
-    fill: readToken('--color-disc-fill'),
-    ink: readToken('--color-disc-ink'),
+    liquid: readToken('--color-liquid'),
+    liquidEdge: readToken('--color-liquid-edge'),
+    ripple: readToken('--color-liquid-ripple'),
     glow: readToken('--color-disc-glow'),
     vinyl: readToken('--color-vinyl'),
     vinylLip: readToken('--color-vinyl-lip'),

@@ -1,0 +1,110 @@
+/*
+ * The white scene around the turntable: the microphone and the notes it sends to the disc.
+ * Light comes from the top-left, so shadows fall to the bottom-right.
+ */
+@layer components {
+  /* The microphone: presses down and glows amber while it records */
+  .mic {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: calc(var(--mic-size) * 1.1);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+    transition: transform 160ms ease, filter 300ms ease;
+  }
+
+  .mic svg {
+    width: var(--mic-size);
+    height: auto;
+    overflow: visible;
+    filter:
+      drop-shadow(3px 6px 4px var(--shadow-contact))
+      drop-shadow(14px 22px 24px var(--shadow-ambient));
+    transition: filter 300ms ease;
+  }
+
+  .mic[data-recording="true"] {
+    transform: translateY(3px) scale(0.975);
+  }
+
+  .mic[data-recording="true"] svg {
+    filter:
+      drop-shadow(0 0 14px var(--color-amber-glow))
+      drop-shadow(2px 4px 3px var(--shadow-contact));
+  }
+
+  .mic[aria-disabled="true"] {
+    cursor: default;
+    filter: saturate(0.6) opacity(0.55);
+  }
+
+  .mic:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 6px;
+    border-radius: 18px;
+  }
+
+  /* Notes and melody lines rising from the mic into the disc while recording */
+  .note-stream {
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    width: 220px;
+    height: var(--stream-height, 200px);
+    translate: -50% 0;
+    pointer-events: none;
+    transition: opacity 300ms ease;
+  }
+
+  .note-stream-note {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 16px;
+    color: var(--color-ink);
+    opacity: 0;
+    animation: note-rise var(--rise-duration) cubic-bezier(0.3, 0.1, 0.4, 1) var(--rise-delay) infinite;
+  }
+
+  .note-stream-line {
+    stroke: var(--color-ink-muted);
+    stroke-width: 1;
+    fill: none;
+    stroke-dasharray: 18 180;
+    opacity: 0.3;
+    animation: melody-flow 2.4s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .note-stream-note,
+    .note-stream-line {
+      animation: none;
+    }
+  }
+}
+
+@keyframes note-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.8);
+  }
+  15% {
+    opacity: 0.85;
+  }
+  75% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--drift)), calc(var(--stream-height, 200px) * -1)) scale(0.45) rotate(var(--turn));
+  }
+}
+
+@keyframes melody-flow {
+  to {
+    stroke-dashoffset: -206;
+  }
+}

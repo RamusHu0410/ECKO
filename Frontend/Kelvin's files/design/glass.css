@@ -1,19 +1,14 @@
 /*
- * The glass material, built from the anatomy of Apple's Liquid Glass. Every value comes from
- * a --glass-* token in tokens.css, so it can be tuned live in DevTools.
+ * The glass material, from the anatomy of Apple's Liquid Glass. Every value is a token.
  *
- *   the element     a light blur + a little brightness on the table behind, neutral drop shadow
- *   ::before        the committed white tint (plus a second tint for glass inside glass) and the
- *                   inset thickness lines: bright along the top, fainter along the bottom
+ *   the element     light blur + brightness on what is behind, a soft lifted shadow
+ *   ::before        the committed white tint (a second layer for glass inside glass) and the
+ *                   inset thickness lines: bright along the top, faint along the bottom
  *   ::after         the lit rim: a gradient masked down to a ring, bright where light catches
  *                   the edge and nearly gone along the sides (never a uniform border)
  *
- * Two strengths, like Apple's clear and regular materials: the disc is clear so the wood shows
- * through; glass that carries text (buttons, pills, messages) is frosted so dark text stays
- * readable. Both switch the same variables, so every layer below is shared.
- *
- * In Chromium the disc swaps the CSS blur for liquid-glass-react's refraction (GlassPanel) and
- * keeps every other layer, so Safari and Firefox get the same material without refraction.
+ * The disc on the turntable can't use backdrop-filter (it sits inside the tilted 3D plate), so
+ * .disc-glass fakes the same material over the known black mat.
  */
 @layer components {
   .glass-surface {
@@ -38,7 +33,8 @@
     transition: background-color var(--duration-fade) ease;
   }
 
-  .glass-surface::after {
+  .glass-surface::after,
+  .disc-glass::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -63,7 +59,7 @@
     mask-composite: exclude;
   }
 
-  /* Glass inside glass (the buttons in a message) gets a second, lighter layer of tint */
+  /* Glass inside glass (buttons in a message or panel) gets a second, lighter layer of tint */
   .glass-surface .glass-surface::before {
     background-image: linear-gradient(var(--glass-tint-nested) 0 0);
   }
@@ -73,25 +69,67 @@
     z-index: 2;
   }
 
+  .glass-panel {
+    border-radius: var(--radius-panel);
+  }
+
+  .glass-message {
+    border-radius: var(--radius-message);
+  }
+
+  /* Small controls: buttons and pills */
+  .glass-control {
+    border-radius: var(--radius-pill);
+    box-shadow: var(--glass-shadow-small);
+  }
+
+  @media (hover: hover) {
+    button.glass-control:hover {
+      --glass-tint: var(--glass-tint-hover);
+    }
+  }
+
+  .glass-control:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
   /*
-   * The disc: a thick round lens. Its rim is conic (highlights at 10 and 4 o'clock) and thicker,
-   * and a faint lighter ring a few pixels inside the rim gives it depth.
+   * The faked glass disc: a thick round lens over the black mat. A faint tint, reflections that
+   * stay still while the record turns underneath, a lighter thickness ring just inside the edge,
+   * and a conic lit rim (highlights at 10 and 4 o'clock). It fades away once the record is vinyl.
    */
-  .glass-disc {
+  .disc-glass {
+    position: absolute;
+    inset: 0;
     border-radius: 50%;
+    pointer-events: none;
+    transition: opacity var(--duration-press-vinyl) ease;
   }
 
-  .glass-disc::before {
-    background-image: radial-gradient(
-      circle closest-side,
-      transparent calc(100% - var(--glass-thickness-inset) - 2px),
-      var(--glass-thickness-ring) calc(100% - var(--glass-thickness-inset) - 0.75px),
-      var(--glass-thickness-ring) calc(100% - var(--glass-thickness-inset) + 0.75px),
-      transparent calc(100% - var(--glass-thickness-inset) + 2px)
-    );
+  .disc-glass[data-hidden="true"] {
+    opacity: 0;
   }
 
-  .glass-disc::after {
+  .disc-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(18% 10% at 30% 22%, var(--glass-disc-specular), transparent 70%),
+      linear-gradient(128deg, var(--glass-disc-reflection) 0%, transparent 34%, transparent 72%, var(--glass-disc-reflection) 96%),
+      radial-gradient(
+        circle closest-side,
+        transparent calc(100% - var(--glass-thickness-inset) - 2px),
+        var(--glass-thickness-ring) calc(100% - var(--glass-thickness-inset) - 0.75px),
+        var(--glass-thickness-ring) calc(100% - var(--glass-thickness-inset) + 0.75px),
+        transparent calc(100% - var(--glass-thickness-inset) + 2px)
+      ),
+      var(--glass-disc-tint);
+  }
+
+  .disc-glass::after {
     padding: var(--glass-rim-width-disc);
     background: conic-gradient(
       from 300deg,
@@ -105,70 +143,68 @@
     );
   }
 
-  .glass-disc > .glass-content {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
+  /*
+   * Glass fader: a native range input (keyboard and screen readers work as usual), drawn as a
+   * glass groove with a glass knob.
+   */
+  .glass-fader {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 32px;
+    background: transparent;
+    cursor: pointer;
   }
 
-  /* The disc in Chromium: liquid-glass-react refracts the table underneath */
-  .glass-surface[data-refraction="on"] {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
-  .glass-refraction {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  /* Overrides of liquid-glass-react's inline styles, so it adds refraction and nothing else:
-     - its rim layers would double our lit rim, so they are hidden;
-     - its mix-blend-mode layers make Chrome isolate the stacking context, which cuts the
-       refraction layer's backdrop-filter off from the table (the wood would show unblurred);
-     - its backdrop-filter becomes the same blur and brightness as every other glass. */
-  .glass-refraction > span {
-    display: none !important;
-  }
-
-  .glass-refraction > * {
-    mix-blend-mode: normal !important;
-  }
-
-  .glass-refraction .glass__warp {
-    -webkit-backdrop-filter: blur(var(--glass-blur)) brightness(var(--glass-brightness)) !important;
-    backdrop-filter: blur(var(--glass-blur)) brightness(var(--glass-brightness)) !important;
-  }
-
-  /* Glass that carries text: frosted */
-  .glass-message,
-  .glass-control {
-    --glass-tint: var(--glass-tint-frosted);
-    --glass-blur: var(--glass-blur-frosted);
-  }
-
-  .glass-message {
-    border-radius: var(--radius-message);
-  }
-
-  /* Small controls: buttons and pills (CSS glass only, never liquid-glass-react) */
-  .glass-control {
-    border-radius: var(--radius-pill);
-    box-shadow: var(--glass-shadow-small);
-  }
-
-  @media (hover: hover) {
-    button.glass-control:hover {
-      --glass-tint: var(--glass-tint-frosted-hover);
-    }
-  }
-
-  .glass-control:focus-visible {
+  .glass-fader:focus-visible {
     outline: 2px solid var(--color-amber);
-    outline-offset: 3px;
+    outline-offset: 4px;
+    border-radius: var(--radius-pill);
+  }
+
+  .glass-fader::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, rgba(120, 100, 80, 0.16), rgba(255, 255, 255, 0.5));
+    box-shadow: inset 0 1px 2px rgba(40, 28, 18, 0.18), 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .glass-fader::-moz-range-track {
+    height: 8px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, rgba(120, 100, 80, 0.16), rgba(255, 255, 255, 0.5));
+    box-shadow: inset 0 1px 2px rgba(40, 28, 18, 0.18), 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .glass-fader::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 30px;
+    height: 30px;
+    margin-top: -11px;
+    border-radius: 50%;
+    border: 0;
+    background:
+      radial-gradient(60% 50% at 35% 28%, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0) 70%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(232, 226, 218, 0.9));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      inset 0 -1px 0 rgba(120, 100, 80, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.8),
+      0 4px 10px -2px rgba(40, 28, 18, 0.3);
+  }
+
+  .glass-fader::-moz-range-thumb {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 0;
+    background:
+      radial-gradient(60% 50% at 35% 28%, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0) 70%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(232, 226, 218, 0.9));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      inset 0 -1px 0 rgba(120, 100, 80, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.8),
+      0 4px 10px -2px rgba(40, 28, 18, 0.3);
   }
 }

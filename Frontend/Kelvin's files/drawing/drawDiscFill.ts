@@ -1,43 +1,39 @@
 /*
  * Pure canvas drawing for the record disc: the same inputs always draw the same picture.
- * Note placement comes from a seeded random per mic-level sample, never Math.random().
  *
- * Recording: the glass fills from the outer edge inward along a spiral. How far it has filled
- * follows elapsed time; how many notes appear, and how big, follows the mic level at that moment.
- * Pressing: the glass darkens from the center outward into vinyl, the notes and melody lines
- * settle into the grooves, and the amber label appears.
+ * Recording: liquid pours into the glass disc and spreads from the center outward, like water in
+ * a shallow dish seen from above. It pours at a steady rate, so its area (not its radius) grows
+ * with elapsed time. Its edge ripples, and rings travel outward, more strongly the louder the hum.
+ * Pressing: the liquid darkens from the center outward into vinyl, the grooves settle in and the
+ * amber label appears (drawVinyl, unchanged).
  */
-import {
-  HOLE_RADIUS,
-  MELODY_LINES,
-  SPIRAL_STEPS,
-  TAU,
-  bandWidth,
-  circlePath,
-  clamp01,
-  easeInOutCubic,
-  fade,
-  melodyOffset,
-  placeNotes,
-  spiralXY,
-  traceSpiral,
-  type DiscFrame,
-  type DiscLook,
-  type PlacedNote,
-} from './discGeometry'
+import { TAU, circlePath, clamp01, easeInOutCubic, fade, placeNotes, type DiscFrame } from './discGeometry'
 import { drawVinyl } from './drawVinyl'
 
 export type { DiscFrame, DiscLook } from './discGeometry'
 
-const MELODY_WIDTH_PX = 0.9
-const MELODY_OPACITY = 0.5
-const NOTE_FADE_IN_SAMPLES = 5
+// The liquid: how far it can spread (fraction of radius) and how finely its edge is drawn
+const LIQUID_MAX = 0.955
+const LIQUID_EDGE_POINTS = 180
+// The rippling edge: three waves travelling around it, calm when quiet, livelier when loud
+const RIPPLE_WAVES = [
+  { lobes: 5, speed: 1.1, phase: 0 },
+  { lobes: 8, speed: -1.6, phase: 1.9 },
+  { lobes: 13, speed: 2.3, phase: 4.2 },
+]
+const RIPPLE_CALM = 0.004
+const RIPPLE_LOUD = 0.03
+/** Ripple phase advances this much over a full-length recording. */
+const RIPPLE_CLOCK = 14
+/** Rings travelling outward from the center, and how bright they get when loud. */
+const RING_COUNT = 3
+const RING_QUIET = 0.12
+const RING_LOUD = 0.5
+const MENISCUS_OPACITY = 0.8
 
-// Pressing: softness of the dark front, how far ahead of it notes fade (fractions of radius),
-// and when the label starts to show
+// Pressing: softness of the dark front (fraction of radius) and when the label starts to show
 const PRESS_EDGE = 0.07
 const PRESS_EDGE_OPACITY = 0.5
-const NOTE_SETTLE = 0.16
 const LABEL_START = 0.45
 
 export function drawDiscFill(ctx: CanvasRenderingContext2D, frame: DiscFrame): void {
@@ -47,21 +43,21 @@ export function drawDiscFill(ctx: CanvasRenderingContext2D, frame: DiscFrame): v
 
   const center = size / 2
   const radius = size / 2
-  const notes = placeNotes(frame, radius)
 
   if (pressProgress <= 0) {
-    drawGlassHole(ctx, frame.look, center, radius)
-    drawGlassFill(ctx, frame, center, radius, notes, 0)
+    drawLiquid(ctx, frame, center, radius)
     return
   }
 
+  // the hum pressed into the grooves (melody traces and note glints)
+  const notes = placeNotes(frame, radius)
   const labelReveal = clamp01((pressProgress - LABEL_START) / (1 - LABEL_START))
 
   if (reducedMotion) {
-    // no sweeping: the glass simply fades into a finished record
+    // no sweeping: the liquid simply fades into a finished record
     ctx.save()
     ctx.globalAlpha = 1 - pressProgress
-    drawGlassFill(ctx, frame, center, radius, notes, 0)
+    drawLiquid(ctx, frame, center, radius)
     ctx.globalAlpha = pressProgress
     drawVinyl(ctx, frame, center, radius, notes, 1)
     ctx.restore()
@@ -69,8 +65,7 @@ export function drawDiscFill(ctx: CanvasRenderingContext2D, frame: DiscFrame): v
   }
 
   const front = easeInOutCubic(pressProgress) * radius * (1 + PRESS_EDGE)
-  drawGlassHole(ctx, frame.look, center, radius)
-  drawGlassFill(ctx, frame, center, radius, notes, front)
+  drawLiquid(ctx, frame, center, radius)
 
   ctx.save()
   circlePath(ctx, center, Math.min(front, radius))
@@ -79,7 +74,7 @@ export function drawDiscFill(ctx: CanvasRenderingContext2D, frame: DiscFrame): v
   ctx.restore()
 
   if (front < radius) {
-    // the glass darkens just ahead of the front, so the edge is soft
+    // the liquid darkens just ahead of the front, so the edge is soft
     ctx.save()
     circlePath(ctx, center, radius)
     ctx.clip()
@@ -92,117 +87,52 @@ export function drawDiscFill(ctx: CanvasRenderingContext2D, frame: DiscFrame): v
   }
 }
 
-/** The spindle hole in the clear glass: a small drilled ring. */
-function drawGlassHole(ctx: CanvasRenderingContext2D, look: DiscLook, center: number, radius: number) {
-  ctx.strokeStyle = look.ink
-  ctx.lineWidth = 1.25
-  ctx.beginPath()
-  ctx.arc(center, center, radius * HOLE_RADIUS, 0, TAU)
-  ctx.stroke()
-}
-
-/** The milky spiral band, melody lines, notes and the glow at the leading end. */
-function drawGlassFill(
-  ctx: CanvasRenderingContext2D,
-  frame: DiscFrame,
-  center: number,
-  radius: number,
-  notes: PlacedNote[],
-  front: number,
-) {
-  const { look, fillProgress, reducedMotion } = frame
+/** The pool of liquid, its rippling edge with a bright meniscus, and rings moving outward. */
+function drawLiquid(ctx: CanvasRenderingContext2D, frame: DiscFrame, center: number, radius: number) {
+  const { look, fillProgress, liveLevel, reducedMotion } = frame
   if (fillProgress <= 0) return
-  const band = bandWidth(radius)
-  const baseAlpha = ctx.globalAlpha
 
-  // with reduced motion the whole band fades in instead of sweeping around
-  const bandEnd = reducedMotion ? 1 : fillProgress
-  ctx.beginPath()
-  traceSpiral(ctx, center, radius, bandEnd, () => 0)
-  ctx.globalAlpha = baseAlpha * (reducedMotion ? fillProgress : 1)
-  ctx.lineWidth = band
-  ctx.lineCap = 'butt'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = look.fill
-  ctx.stroke()
-  if (bandEnd < 1) {
-    // round only the moving end, as a half circle facing forward so it doesn't overlap the band
-    const end = spiralXY(bandEnd, center, radius)
-    const before = spiralXY(bandEnd - 1 / SPIRAL_STEPS, center, radius)
-    const heading = Math.atan2(end.y - before.y, end.x - before.x)
-    ctx.fillStyle = look.fill
-    ctx.beginPath()
-    ctx.arc(end.x, end.y, band / 2, heading - Math.PI / 2, heading + Math.PI / 2)
-    ctx.fill()
-  }
-
-  ctx.globalAlpha = baseAlpha * MELODY_OPACITY
-  ctx.lineWidth = MELODY_WIDTH_PX
-  ctx.strokeStyle = look.ink
-  for (const line of MELODY_LINES) {
-    ctx.beginPath()
-    traceSpiral(ctx, center, radius, fillProgress, (u) => melodyOffset(frame, line, u, band))
-    ctx.stroke()
-  }
-
-  const newestIndex = Math.min(frame.levels.length, frame.fillProgress * frame.levelsPerRecording) - 1
-  ctx.fillStyle = look.ink
-  for (const note of notes) {
-    const fadeIn = clamp01((newestIndex - note.index + 1) / NOTE_FADE_IN_SAMPLES)
-    const settle = front > 0 ? clamp01((note.radius - front) / (radius * NOTE_SETTLE)) : 1
-    const alpha = fadeIn * settle
-    if (alpha <= 0) continue
-    ctx.globalAlpha = baseAlpha * alpha
-    drawNote(ctx, center, note)
-  }
-  ctx.globalAlpha = baseAlpha
-
-  const recording = frame.pressProgress <= 0 && fillProgress < 1
-  if (recording && !reducedMotion) {
-    const { x, y } = spiralXY(fillProgress, center, radius)
-    const glowRadius = band * (0.7 + 0.9 * frame.liveLevel)
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius)
-    glow.addColorStop(0, look.glow)
-    glow.addColorStop(1, fade(look.glow, 0))
-    ctx.fillStyle = glow
-    circlePath(ctx, x, glowRadius, y)
-    ctx.fill()
-  }
-}
-
-/** A note as vector paths: a tilted oval head, a stem pointing away from the center, maybe a flag. */
-function drawNote(ctx: CanvasRenderingContext2D, center: number, note: PlacedNote) {
-  const { size, kind } = note
-  const headWidth = size * 1.3
-  const stemX = headWidth * 0.9
-  const stemTop = -size * 3.2
+  // with reduced motion the full pool fades in instead of spreading and rippling
+  const pool = radius * LIQUID_MAX * (reducedMotion ? 1 : Math.sqrt(fillProgress))
+  const wobble = reducedMotion ? 0 : radius * (RIPPLE_CALM + RIPPLE_LOUD * liveLevel)
+  const time = fillProgress * RIPPLE_CLOCK
 
   ctx.save()
-  ctx.translate(center + Math.cos(note.angle) * note.radius, center + Math.sin(note.angle) * note.radius)
-  ctx.rotate(note.angle + Math.PI / 2)
-  ctx.strokeStyle = ctx.fillStyle
+  ctx.globalAlpha *= reducedMotion ? fillProgress : 1
 
   ctx.beginPath()
-  ctx.ellipse(0, 0, headWidth, size * 0.92, -0.35, 0, TAU)
-  if (kind === 'half') {
-    ctx.lineWidth = size * 0.38
-    ctx.stroke()
-  } else {
-    ctx.fill()
+  for (let step = 0; step <= LIQUID_EDGE_POINTS; step++) {
+    const angle = (step / LIQUID_EDGE_POINTS) * TAU
+    let swell = 0
+    for (const wave of RIPPLE_WAVES) swell += Math.sin(angle * wave.lobes + time * wave.speed + wave.phase)
+    const r = Math.min(radius, Math.max(0, pool + (wobble * swell) / RIPPLE_WAVES.length))
+    const x = center + Math.cos(angle) * r
+    const y = center + Math.sin(angle) * r
+    if (step === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
   }
+  ctx.closePath()
 
-  ctx.lineWidth = Math.max(0.6, size * 0.24)
-  ctx.beginPath()
-  ctx.moveTo(stemX, -size * 0.2)
-  ctx.lineTo(stemX, stemTop)
+  const body = ctx.createRadialGradient(center - pool * 0.25, center - pool * 0.3, 0, center, center, pool + wobble)
+  body.addColorStop(0, look.liquid)
+  body.addColorStop(1, look.liquidEdge)
+  ctx.fillStyle = body
+  ctx.fill()
+
+  ctx.lineWidth = Math.max(1, radius * 0.008)
+  ctx.strokeStyle = look.ripple
+  ctx.globalAlpha *= MENISCUS_OPACITY
   ctx.stroke()
 
-  if (kind === 'eighth') {
-    ctx.lineWidth = size * 0.32
-    ctx.beginPath()
-    ctx.moveTo(stemX, stemTop)
-    ctx.bezierCurveTo(stemX + size * 1.2, stemTop + size * 0.9, stemX + size * 1.5, stemTop + size * 1.8, stemX + size * 0.7, stemTop + size * 2.6)
-    ctx.stroke()
+  if (!reducedMotion) {
+    const baseAlpha = ctx.globalAlpha / MENISCUS_OPACITY
+    ctx.lineWidth = 1
+    for (let ring = 0; ring < RING_COUNT; ring++) {
+      const travel = (time * 0.35 + ring / RING_COUNT) % 1
+      ctx.globalAlpha = baseAlpha * (1 - travel) * (RING_QUIET + RING_LOUD * liveLevel)
+      circlePath(ctx, center, pool * travel)
+      ctx.stroke()
+    }
   }
   ctx.restore()
 }

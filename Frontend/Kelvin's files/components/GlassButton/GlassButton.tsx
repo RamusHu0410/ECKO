@@ -14,7 +14,7 @@ export default function GlassButton({ children, className = '', ...buttonProps }
   return (
     <motion.button
       type="button"
-      className={`glass-surface glass-control cursor-pointer px-6 py-2.5 text-base font-medium text-ink ${className}`}
+      className={`glass-surface glass-control cursor-pointer px-6 py-2.5 text-base font-medium whitespace-nowrap text-ink ${className}`}
       whileTap={reducedMotion ? undefined : { scale: press.scale }}
       transition={press.transition}
       {...buttonProps}

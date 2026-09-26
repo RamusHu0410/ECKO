@@ -1,7 +1,7 @@
 /*
- * Design tokens: every color, radius, blur, shadow, size and motion setting lives here.
- * `static` keeps all of them as CSS variables even when no Tailwind class uses them,
- * because glass.css, the canvas drawing and the motion springs read them directly.
+ * Design tokens: every color, size, shadow and motion setting lives here, and all of them can be
+ * tuned live in DevTools on :root. `static` keeps them as CSS variables even when no Tailwind class
+ * uses them, because the CSS files, the canvas drawing and the motion springs read them directly.
  * Canvas colors use rgba() commas so every browser's canvas can parse them.
  */
 @theme static {
@@ -13,70 +13,85 @@
   --color-ink: #2a2420;
   --color-ink-muted: #8a8074;
   --color-amber: #e8a94c;
+  --color-amber-glow: rgba(232, 169, 76, 0.55);
 
-  /* Text that sits straight on the wood (the title): warm off-white, since the table is dark */
-  --color-on-wood: #f2efe9;
-
-  /* Wood table: the photo, multiplied by a warm brown so it reads as walnut and white glass
-     pops against it. --color-wood only shows while the photo loads. */
-  --color-wood: #6f4a2e;
-  --wood-shade: #8a7462;
-  --wood-contrast: 1.3; /* brings back the grain the darkening flattens */
-  --color-vignette: rgba(30, 16, 6, 0.4);
+  /* The page: off-white, lit from the top-left */
+  --color-page: #f4f1ec;
+  --shadow-contact: rgba(40, 28, 18, 0.34);
+  --shadow-ambient: rgba(40, 28, 18, 0.16);
 
   /*
-   * Glass material (glass.css). Every value can be tuned live in DevTools on :root.
+   * Glass (glass.css): panel, faders, buttons, pills and messages on the page
    */
-  /* Clear glass (the disc): the wood shows through, bent at the edges by the refraction */
-  --glass-tint: rgba(255, 255, 255, 0.1);
-  --glass-blur: 2px;
-  --glass-brightness: 1.12;
-  /* Frosted glass (buttons, pills, messages): enough haze that dark text stays readable */
-  --glass-tint-frosted: rgba(255, 255, 255, 0.4);
-  --glass-tint-frosted-hover: rgba(255, 255, 255, 0.5);
-  --glass-blur-frosted: 7px;
-  /* Glass inside glass gets a second, lighter layer of tint */
-  --glass-tint-nested: rgba(255, 255, 255, 0.16);
-  /* Lit rim: a gradient ring, bright where light catches the edge, nearly gone elsewhere */
+  --glass-tint: rgba(255, 255, 255, 0.55);
+  --glass-tint-hover: rgba(255, 255, 255, 0.72);
+  --glass-tint-nested: rgba(255, 255, 255, 0.2);
+  --glass-blur: 14px;
+  --glass-brightness: 1.04;
   --glass-rim-width: 1.5px;
   --glass-rim-width-disc: 2.5px;
   --glass-rim-bright: rgba(255, 255, 255, 0.95);
   --glass-rim-dim: rgba(255, 255, 255, 0.06);
-  --glass-rim-fade-start: 30%; /* small elements: bright at top-left, dim from here… */
-  --glass-rim-fade-end: 70%; /* …until here, then bright again at bottom-right */
-  --glass-rim-disc-spread: 55deg; /* disc: how far each highlight (10 and 4 o'clock) fades around */
-  /* Thickness: bright inset line at the top, fainter at the bottom, and the disc's inner ring */
-  --glass-inset-top: rgba(255, 255, 255, 0.7);
-  --glass-inset-bottom: rgba(255, 255, 255, 0.22);
-  --glass-thickness-ring: rgba(255, 255, 255, 0.18);
-  --glass-thickness-inset: 8px;
-  /* Lift: one neutral shadow strength drives both shadows */
-  --glass-shadow-strength: 0.3;
+  --glass-rim-fade-start: 30%;
+  --glass-rim-fade-end: 70%;
+  --glass-rim-disc-spread: 55deg;
+  --glass-inset-top: rgba(255, 255, 255, 0.9);
+  --glass-inset-bottom: rgba(120, 100, 80, 0.12);
+  --glass-shadow-strength: 0.22;
   --glass-shadow:
-    0 2px 6px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.2)),
-    0 22px 48px -18px rgba(0, 0, 0, var(--glass-shadow-strength)),
-    0 48px 96px -40px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.73));
+    0 1px 2px rgba(40, 28, 18, calc(var(--glass-shadow-strength) * 0.4)),
+    0 18px 40px -16px rgba(40, 28, 18, var(--glass-shadow-strength)),
+    0 40px 80px -36px rgba(40, 28, 18, calc(var(--glass-shadow-strength) * 0.7));
   --glass-shadow-small:
-    0 1px 2px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.2)),
-    0 10px 24px -12px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.93));
-  --radius-message: 28px;
+    0 1px 2px rgba(40, 28, 18, calc(var(--glass-shadow-strength) * 0.4)),
+    0 8px 20px -10px rgba(40, 28, 18, var(--glass-shadow-strength));
+  --radius-panel: 28px;
+  --radius-message: 24px;
   --radius-pill: 999px;
 
-  /* Liquid-glass refraction on the disc (Chromium only): subtle, never tinting.
-     Read once when the disc appears, so reload after changing these three. */
-  --glass-displacement: 36;
-  --glass-aberration: 0.9;
-  --glass-elasticity: 0.04;
+  /* The glass disc on the platter: faked (no backdrop-filter inside the tilted plate), so it is a
+     faint tint over the black mat, fixed reflections, a thickness ring and the lit rim */
+  --glass-disc-tint: rgba(255, 255, 255, 0.09);
+  --glass-disc-reflection: rgba(255, 255, 255, 0.26);
+  --glass-disc-specular: rgba(255, 255, 255, 0.55);
+  --glass-thickness-ring: rgba(255, 255, 255, 0.3);
+  --glass-thickness-inset: 7px;
 
-  /* Recording disc: it is the whole experience, so it dominates the page */
-  --size-disc: clamp(340px, 62vmin, 620px);
-  --text-disc: max(13px, calc(var(--size-disc) * 0.034));
+  /*
+   * Turntable (turntable.css). Sizes follow the plate width, which fits laptop screens.
+   */
+  --plate-w: clamp(300px, min(40vw, 66vh), 620px);
+  --plate-depth-ratio: 0.74;
+  --plinth-height-ratio: 0.12;
+  --tt-tilt: 52deg;
+  --tt-yaw: 30deg;
+  --tt-perspective: 2000px;
+  /* Walnut: the maple photo multiplied by this shade; faces darker away from the light */
+  --wood-shade: #7d6452;
+  --color-wood: #5e4130;
+  --wood-face-front: rgba(20, 10, 4, 0.22);
+  --wood-face-side: rgba(20, 10, 4, 0.42);
+  --wood-bevel-light: rgba(255, 236, 214, 0.35);
+  --wood-bevel-dark: rgba(20, 10, 4, 0.35);
+  /* Brushed aluminum, black rubber mat, steel spindle */
+  --metal-light: #eef0f2;
+  --metal-mid: #c3c7cc;
+  --metal-dark: #8d9298;
+  --color-mat: #161514;
+  --color-mat-texture: rgba(255, 255, 255, 0.025);
+  /* Speed-style buttons on the front of the plinth */
+  --color-key: #ece8e1;
+  --color-key-pressed: #d9d3ca;
+  --color-led-off: #4a3f36;
+
+  /* Liquid pouring into the disc while recording */
+  --color-liquid: rgba(251, 249, 245, 0.96);
+  --color-liquid-edge: rgba(221, 215, 205, 0.92);
+  --color-liquid-ripple: rgba(255, 255, 255, 0.6);
+
+  /* Vinyl (unchanged look) */
   --vinyl-label-size: 31%;
-  --color-disc-fill: rgba(255, 255, 255, 0.62);
-  --color-disc-ink: rgba(42, 36, 32, 0.66);
   --color-disc-glow: rgba(232, 169, 76, 0.6);
-
-  /* Vinyl */
   --color-vinyl: #121110;
   --color-vinyl-lip: #24211e;
   --color-vinyl-groove: rgba(255, 255, 255, 0.05);
@@ -85,12 +100,19 @@
   --color-sheen: rgba(255, 255, 255, 0.13);
   --color-sheen-soft: rgba(255, 255, 255, 0.1);
 
+  /* Microphone */
+  --mic-size: clamp(88px, 13vh, 132px);
+  --color-chrome-light: #f7f7f6;
+  --color-chrome-mid: #b9bcbf;
+  --color-chrome-dark: #6f7377;
+
   /* Motion (durations in ms) */
   --spring-press-scale: 0.96;
   --spring-press-stiffness: 600;
   --spring-press-damping: 32;
   --duration-fade: 400ms;
   --duration-press-vinyl: 1200ms;
+  --duration-tonearm: 800ms;
   /* Turntable: one turn per 1800ms is 33⅓ rpm; while the server works it turns slowly */
   --duration-rotation: 1800ms;
   --duration-rotation-waiting: 7200ms;

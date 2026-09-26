@@ -51,7 +51,7 @@ export function useRecordSession(reducedMotion: boolean) {
   const { prime } = mic
   const { reset: resetUpload } = upload
   const { rewind, togglePause } = turntable
-  const { start, stop } = recorder
+  const { start, stop, reset: resetRecorder } = recorder
 
   const record = useCallback(() => {
     prime() // inside the tap: iOS only starts audio from a user gesture
@@ -59,6 +59,13 @@ export function useRecordSession(reducedMotion: boolean) {
     rewind()
     start()
   }, [prime, resetUpload, rewind, start])
+
+  /** Back to an empty glass disc (tonearm home, upload forgotten), ready for the next hum. */
+  const reset = useCallback(() => {
+    resetUpload()
+    rewind()
+    resetRecorder()
+  }, [resetUpload, rewind, resetRecorder])
 
   const tap = useCallback(() => {
     if (phase === 'recording') stop()
@@ -84,6 +91,9 @@ export function useRecordSession(reducedMotion: boolean) {
     uploadFailure: upload.failure,
     tap,
     record,
+    /** Ends the recording now (hold-to-record releases the mic). */
+    stopRecording: stop,
+    reset,
     retry: upload.retry,
   }
 }
