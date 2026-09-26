@@ -717,21 +717,27 @@ def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
         return 0.0
 
 
+MIN_VOICED_RATIO = 0.5  # a segment must be mostly confidently-pitched to count as a note
+
+
 def _build_melody(
-    analysis: Dict[str, Any], skip_first_note: bool = True
+    analysis: Dict[str, Any], min_voiced_ratio: float = MIN_VOICED_RATIO
 ) -> List[Dict[str, float]]:
     """Convert detected sound segments into the MIDI-note API melody format.
 
+    A loud segment isn't necessarily a sung note — a mic pop, breath catch,
+    or attack transient can be loud enough for `detect_sound_segments` to
+    flag it, without actually being pitched. Rather than guessing which
+    *position* an artifact would be at (dropping "the first note" turned out
+    to be wrong far more often than right: most recordings start right on
+    the user's real first note), each segment is judged on its own acoustic
+    evidence: it only becomes a melody note if most of its frames are
+    confidently voiced/pitched by PYIN, not just loud.
+
     Args:
         analysis: The ``process_audio`` result.
-        skip_first_note: Drop the earliest detected sound segment before
-            building the melody. Recordings reliably start with a mic pop,
-            breath catch, or attack transient right as recording begins,
-            before the user actually starts humming, and that leading
-            segment is essentially always that artifact rather than a sung
-            note. Guarded on there being more than one segment: a hum with
-            only one detected sound is that sung note, not an artifact, and
-            must never be dropped by this heuristic.
+        min_voiced_ratio: Minimum fraction of a segment's frames that must be
+            voiced for it to count as a real note (0 disables the filter).
     """
     pitch = analysis.get("pitch", {})
     if not isinstance(pitch, dict):
@@ -741,13 +747,15 @@ def _build_melody(
     voiced = np.asarray(pitch.get("voiced_flag", []), dtype=bool)
     melody = []
 
-    segments = analysis.get("segments", [])
-    if skip_first_note and len(segments) > 1:
-        segments = segments[1:]
-
-    for segment in segments:
+    for segment in analysis.get("segments", []):
         start, end = float(segment["start"]), float(segment["end"])
-        values = frequencies[(times >= start) & (times <= end) & voiced]
+        in_segment = (times >= start) & (times <= end)
+        total_frames = int(np.sum(in_segment))
+        voiced_frames = int(np.sum(in_segment & voiced))
+        if total_frames == 0 or voiced_frames / total_frames < min_voiced_ratio:
+            continue  # mostly unpitched: a pop/breath/noise burst, not a note
+
+        values = frequencies[in_segment & voiced]
         values = values[np.isfinite(values) & (values > 0)]
         if values.size:
             frequency_hz = float(np.median(values))
@@ -858,7 +866,7 @@ def extract_notes(
     top_db: float = 30,
     min_note_duration: float = 0.05,
     merge_gap: float = 0.05,
-    skip_first_note: bool = True,
+    min_voiced_ratio: float = MIN_VOICED_RATIO,
     debug: bool = False,
 ) -> list[dict[str, Any]]:
     """
@@ -872,13 +880,10 @@ def extract_notes(
         top_db: Silence threshold for segment detection
         min_note_duration: Minimum note duration in seconds
         merge_gap: Merge notes separated by less than this gap (seconds)
-        skip_first_note: Drop the very first detected note. Recordings
-            reliably start with a mic pop, breath catch, or attack transient
-            right as recording begins, before the user actually starts
-            humming; the first "note" segment_detection finds is essentially
-            always that artifact rather than a sung pitch. Dropped before
-            merging so it can never get averaged into (and so corrupt) the
-            real first note.
+        min_voiced_ratio: Minimum fraction of a segment's frames that must be
+            confidently pitched for it to count as a real note, not just a
+            loud mic pop/breath/noise burst that happened to pass the
+            amplitude-based segment detector (0 disables the filter).
         debug: Enable debug output
 
     Returns:
@@ -921,10 +926,15 @@ def extract_notes(
         if seg_dur < min_note_duration:
             continue
 
+        # --- Is this actually a pitched note, or just a loud noise burst? ---
+        in_segment = (pitch_times >= seg_start) & (pitch_times <= seg_end)
+        total_frames = int(np.sum(in_segment))
+        voiced_frames = int(np.sum(in_segment & pitch_voiced))
+        if total_frames == 0 or voiced_frames / total_frames < min_voiced_ratio:
+            continue  # mostly unpitched: a pop/breath/noise burst, not a note
+
         # --- Pitch: median of voiced frames within segment ---
-        pitch_mask = (
-            (pitch_times >= seg_start) & (pitch_times <= seg_end) & pitch_voiced
-        )
+        pitch_mask = in_segment & pitch_voiced
         seg_pitches = pitch_freqs[pitch_mask]
         note_pitch = float(np.nanmedian(seg_pitches)) if len(seg_pitches) > 0 else 0.0
 
@@ -942,13 +952,6 @@ def extract_notes(
                 "pitch_hz": round(note_pitch, 1),
             }
         )
-
-    # Drop the leading mic-pop/attack-transient "note" before merging, so it
-    # can never get blended into the real first note's pitch/volume average.
-    # Guarded on len > 1: a hum with only one detected note is that note, not
-    # an artifact, and must never be zeroed out by this heuristic.
-    if skip_first_note and len(notes) > 1:
-        notes = notes[1:]
 
     # Merge notes that are very close together (same pitch-ish)
     if merge_gap > 0 and len(notes) > 1:
