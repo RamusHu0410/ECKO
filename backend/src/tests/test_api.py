@@ -12,7 +12,7 @@ from app.extensions import db
 
 
 @pytest.fixture
-def app(monkeypatch):
+def app(monkeypatch, tmp_path):
     # Stub Auth0 token verification: the "token" is treated as the sub claim,
     # and we grant all scopes so route logic (not auth plumbing) is exercised.
     import app.auth.dependencies as deps
@@ -40,6 +40,7 @@ def app(monkeypatch):
     application = create_app("testing")
     application.config["AUTH0_DOMAIN"] = "test.auth0.com"
     application.config["AUTH0_API_AUDIENCE"] = "https://api.test"
+    application.config["RECORDINGS_FOLDER"] = str(tmp_path / "recordings")  # not the real recordings/
     with application.app_context():
         db.create_all()
     return application

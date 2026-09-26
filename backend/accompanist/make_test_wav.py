@@ -4,16 +4,19 @@ Runs an 8-bar demo melody through generate_accompaniment() and renders it to
 WAV using the existing Phase-3 FluidSynth renderer.
 
 Usage:
-    .venv/bin/python make_test_wav.py                 # default: classical style
+    .venv/bin/python make_test_wav.py                 # debug_outputs/generated/test.wav
     .venv/bin/python make_test_wav.py pop             # pick a style
     .venv/bin/python make_test_wav.py cinematic out.wav
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 
 from accompanist.generate import generate_accompaniment
+
+DEBUG_OUTPUT_DIR = Path(__file__).resolve().parent / "debug_outputs" / "generated"
 
 # An 8-bar C-major melody (4 quarter notes per bar), chord-tone content that
 # yields the C F G C Am F G C progression.
@@ -59,9 +62,13 @@ def _render_original(melody: dict, wav_path: str, tempo: float) -> str | None:
 
 def main() -> int:
     # Usage: make_test_wav.py [style] [out.wav] [instrument] [modulate_key] [modulate_mode]
+    # Instrument defaults to the GM sawtooth synth.
     style = sys.argv[1] if len(sys.argv) > 1 else "classical"
-    wav_path = sys.argv[2] if len(sys.argv) > 2 else "test.wav"
-    instrument = sys.argv[3] if len(sys.argv) > 3 else "piano"
+    output_arg = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("test.wav")
+    wav_file = output_arg if output_arg.is_absolute() else DEBUG_OUTPUT_DIR / output_arg
+    wav_file.parent.mkdir(parents=True, exist_ok=True)
+    wav_path = str(wav_file)
+    instrument = sys.argv[3] if len(sys.argv) > 3 else "synth"
     modulate_key = sys.argv[4] if len(sys.argv) > 4 else None
     modulate_mode = sys.argv[5] if len(sys.argv) > 5 else None
     midi_path = wav_path.rsplit(".", 1)[0] + ".mid"

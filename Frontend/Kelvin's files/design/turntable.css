@@ -256,6 +256,11 @@
       0 0 0 rgba(20, 10, 4, 0.55);
   }
 
+  .tt-key:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
   .tt-key:focus-visible {
     outline: 2px solid var(--color-amber);
     outline-offset: 3px;

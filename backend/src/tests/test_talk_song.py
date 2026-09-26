@@ -8,7 +8,7 @@ import pytest
 from accompanist.music.styles import STYLES
 from talk_fakes import write_hum
 
-from app.talk.settings import PIANO, Part, SongSettings
+from app.talk.settings import DEFAULT_LEAD, PIANO, Part, SongSettings
 from app.talk.song import (
     BACKGROUND_VOLUME,
     ENERGY_STEP,
@@ -34,8 +34,8 @@ TUNE = {"melody": [{"hz": hz, "start": float(n), "duration": 0.9} for n, hz in e
 def test_middle_settings_keep_the_hum_as_it_was():
     request = engine_request(HUM, SongSettings())
     assert request["tempo"] == 120.0
-    # at 120 BPM a beat lasts half a second, so seconds × 2 = beats
-    assert request["melody"] == [{"hz": 60.2, "start": 0.0, "duration": 1.0}, {"hz": 64.0, "start": 1.2, "duration": 1.8}]
+    # at 120 BPM a beat lasts half a second, so seconds × 2 = beats, snapped to sixteenths (1.2 → 1.25)
+    assert request["melody"] == [{"hz": 60.2, "start": 0.0, "duration": 1.0}, {"hz": 64.0, "start": 1.25, "duration": 1.75}]
     assert "style" not in request and "mode" not in request  # the engine's own default style; mode from the hum
 
 
@@ -43,7 +43,7 @@ def test_middle_settings_keep_the_hum_as_it_was():
 def test_speed_scales_the_hums_tempo(speed, tempo):
     request = engine_request(HUM, SongSettings(speed=speed))
     assert request["tempo"] == tempo
-    assert request["melody"][1]["start"] == 1.2  # the rhythm in beats never changes, only how fast they go
+    assert request["melody"][1]["start"] == 1.25  # the rhythm in beats never changes, only how fast they go
 
 
 @pytest.mark.parametrize(("pitch", "shift"), [(0.0, -12), (0.4, -2), (0.5, 0), (1.0, 12)])
@@ -84,10 +84,17 @@ def test_instrument_names(word, name):
 def test_notes_graph_shows_what_was_sung_and_what_plays():
     middle = notes_from(HUM, SongSettings())
     assert middle["sung"] == [{"midi": 60.2, "start": 0.0, "duration": 0.5}, {"midi": 64.0, "start": 0.6, "duration": 0.9}]
-    assert middle["played"] == middle["sung"]  # at the middle settings the song plays the hum as sung
+    # at the middle settings the song plays the hum as sung, on the sixteenth-note grid
+    assert middle["played"] == [{"midi": 60.2, "start": 0.0, "duration": 0.5}, {"midi": 64.0, "start": 0.625, "duration": 0.875}]
     moved = notes_from(HUM, SongSettings(speed=1.0, pitch=0.6))
-    assert moved["played"][1] == {"midi": 66.0, "start": 0.4, "duration": 0.6}  # 2 semitones up, 1.5 times as fast
+    assert moved["played"][1] == {"midi": 66.0, "start": 0.417, "duration": 0.583}  # 2 semitones up, 1.5 times as fast
     assert moved["sung"] == middle["sung"]
+
+
+def test_the_silence_before_the_hum_is_not_part_of_the_tune():
+    late = {**HUM, "melody": [{**note, "start": note["start"] + 1.3} for note in HUM["melody"]]}
+    assert engine_request(late, SongSettings())["melody"] == engine_request(HUM, SongSettings())["melody"]
+    assert notes_from(late, SongSettings())["played"][0]["start"] == 1.3  # drawn where it was hummed
 
 
 def tracks(tmp_path, settings: SongSettings) -> list[tuple]:
@@ -109,15 +116,15 @@ def middle_of(song: list[tuple]) -> float:
     return max(note[2] for track in song[:2] for note in track[3]) / 2
 
 
-def test_the_first_song_is_the_engines_song_on_piano(tmp_path):
+def test_the_first_song_is_the_engines_song_on_synth(tmp_path):
     song = tracks(tmp_path, SongSettings())
-    assert [track[:3] for track in song] == [(0, False, 100), (0, False, 100)]  # chords and tune, at the synth's usual volume
+    assert [track[:3] for track in song] == [(81, False, 100), (81, False, 100)]  # chords and tune on the default synth
 
 
 @pytest.mark.parametrize("style", [None, "jazz"])  # jazz plays random fills, so this also checks the seed
 def test_adding_instruments_leaves_the_lead_note_for_note(tmp_path, style):
     before = tracks(tmp_path, SongSettings(style=style))
-    after = tracks(tmp_path, SongSettings(style=style, instruments=(PIANO, Part("violin"), Part("cello"), Part("drums"))))
+    after = tracks(tmp_path, SongSettings(style=style, instruments=(DEFAULT_LEAD, Part("violin"), Part("cello"), Part("drums"))))
     assert after[:2] == before
     assert len(after) == 5
 

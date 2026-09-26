@@ -28,7 +28,7 @@ const MIDDLE: SongSettings = {
   speed: 0.5,
   pitch: 0.5,
   style: null,
-  instruments: [{ name: 'piano', role: 'lead', level: 'normal', section: 'all' }],
+  instruments: [{ name: 'synth', role: 'lead', level: 'normal', section: 'all' }],
   energy: { start: 0, end: 0 },
 }
 

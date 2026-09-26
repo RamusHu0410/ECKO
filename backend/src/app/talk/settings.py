@@ -38,6 +38,8 @@ class Part:
 
 
 PIANO = Part("piano", "lead", "normal")
+SYNTH = Part("synth", "lead", "normal")
+DEFAULT_LEAD = SYNTH
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ class SongSettings:
     speed: float = MIDDLE
     pitch: float = MIDDLE
     style: str | None = None
-    instruments: tuple[Part, ...] = (PIANO,)
+    instruments: tuple[Part, ...] = (DEFAULT_LEAD,)
     energy: tuple[int, int] = (0, 0)  # the first half and the second half
 
     @classmethod
@@ -120,12 +122,12 @@ def edit_instruments(parts: tuple[Part, ...], command: Command) -> tuple[Part, .
 
 def with_one_lead(parts, wanted: str | None = None) -> tuple[Part, ...]:
     """Exactly one lead, playing the whole song: the one just asked for, else the current lead, else
-    the first instrument that can carry a tune. Nothing left that can? The piano comes back to lead."""
+    the first instrument that can carry a tune. Nothing left that can? The default synth returns as lead."""
     names = [part.name for part in parts]
     current = next((part.name for part in parts if part.role == "lead" and part.name != DRUMS), None)
     lead = wanted if wanted in names else current or next((name for name in names if name != DRUMS), None)
     if lead is None:
-        return (PIANO, *(replace(part, role="background") for part in parts))
+        return (DEFAULT_LEAD, *(replace(part, role="background") for part in parts))
     return tuple(replace(part, role="lead", section="all") if part.name == lead else replace(part, role="background") for part in parts)
 
 
@@ -164,7 +166,7 @@ def _read_dial(value, name: str) -> float:
 def _read_instruments(data) -> tuple[Part, ...]:
     """The page's instrument list, as the server last sent it."""
     if data is None:
-        return (PIANO,)
+        return (DEFAULT_LEAD,)
     if not isinstance(data, list):
         raise ValueError("instruments must be a list")
     parts = []

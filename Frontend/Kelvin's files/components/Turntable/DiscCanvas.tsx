@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { drawDiscFill, type DiscFrame, type DiscLook } from '../../drawing/drawDiscFill'
+import { drawDiscFill, type DiscFrame } from '../../drawing/drawDiscFill'
 import { useElementSize } from '../../hooks/useElementSize'
-import { readNumberToken, readToken } from '../../design/readToken'
+import { readDiscLook } from '../../design/readToken'
 
 /** Sharper than 3× costs a lot of drawing for no visible gain. */
 const MAX_PIXEL_RATIO = 3
@@ -31,21 +31,4 @@ export default function DiscCanvas(props: DiscCanvasProps) {
   })
 
   return <canvas ref={canvasRef} className="absolute inset-0 size-full rounded-full" aria-hidden="true" />
-}
-
-function readDiscLook(): DiscLook {
-  return {
-    fontFamily: readToken('--font-sans'),
-    labelRatio: readNumberToken('--vinyl-label-size') / 100,
-    liquid: readToken('--color-liquid'),
-    liquidEdge: readToken('--color-liquid-edge'),
-    ripple: readToken('--color-liquid-ripple'),
-    glow: readToken('--color-disc-glow'),
-    vinyl: readToken('--color-vinyl'),
-    vinylLip: readToken('--color-vinyl-lip'),
-    groove: readToken('--color-vinyl-groove'),
-    trace: readToken('--color-vinyl-trace'),
-    label: readToken('--color-amber'),
-    labelInk: readToken('--color-label-ink'),
-  }
 }

@@ -4,7 +4,6 @@ import { LEVEL_SAMPLE_MS, useMicLevel } from './useMicLevel'
 import { useHumUpload, type UploadStatus } from './useHumUpload'
 import { useSong, type SongStatus } from './useSong'
 import { useTurntable, type PlatterSpeed } from './useTurntable'
-import { useAccompaniment } from './useAccompaniment'
 import { readNumberToken } from '../design/readToken'
 import type { SongSettings } from './useSongSettings'
 
@@ -46,7 +45,6 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
   const song = useSong(settings)
   const phase = sessionPhase(recorder.phase, upload.status, song.status)
   const turntable = useTurntable(PLATTER_SPEED[phase], reducedMotion)
-  const accompaniment = useAccompaniment(upload.status === 'sent' ? (upload.reply?.melody ?? null) : null)
 
   // each finished recording is sent once, while the pressing animation plays
   const { send } = upload
@@ -54,17 +52,8 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
     if (recorder.recording) send(recorder.recording)
   }, [recorder.recording, send])
 
-  // the platter and the accompaniment play/pause together, once the WAV is ready
-  const { status: accompanimentStatus, play: playAccompaniment, pause: pauseAccompaniment } = accompaniment
-  useEffect(() => {
-    if (phase !== 'ready' || accompanimentStatus !== 'ready') return
-    if (turntable.paused) pauseAccompaniment()
-    else playAccompaniment()
-  }, [phase, accompanimentStatus, turntable.paused, playAccompaniment, pauseAccompaniment])
-
   const { prime } = mic
   const { reset: resetUpload } = upload
-  const { reset: resetAccompaniment } = accompaniment
   // each saved hum gets its song made right away, with the settings as they are
   const { make } = song
   useEffect(() => {

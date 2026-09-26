@@ -12,7 +12,7 @@ from app.talk.commands import Change, Command, Energy, NewInstrument, Swap
 from app.talk.pipeline import Pipeline
 from app.talk.settings import PIANO, Part, SongSettings
 
-PIANO_SONG = SongSettings()
+PIANO_SONG = SongSettings(instruments=(PIANO,))
 WITH_VIOLIN = SongSettings(instruments=(PIANO, Part("violin")))
 
 

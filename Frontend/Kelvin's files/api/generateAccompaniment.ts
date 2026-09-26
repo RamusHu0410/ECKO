@@ -8,7 +8,7 @@
  *     melody: [{ hz, start, duration }, ...],  // hz = MIDI note number; time in beats
  *     key?, mode?, tempo?,
  *     style?: 'piano'|'pop'|'cinematic'|'classical'|'jazz'|'asian_folk',
- *     instrument?: 'piano'|'guitar'|'guitar_jazz'|'strings'|'sax'|...,
+ *     instrument?: 'synth'|'synth_pad'|'piano'|'guitar'|'guitar_jazz'|'strings'|'sax'|..., // synth by default
  *     modulate?: { key?, mode? },
  *     format: 'wav' | 'midi' | 'json',
  *   }

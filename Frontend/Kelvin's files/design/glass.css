@@ -1,9 +1,11 @@
 /*
  * The glass material, from the anatomy of Apple's Liquid Glass. Every value is a token.
  *
- *   the element     light blur + brightness on what is behind, a soft lifted shadow
- *   ::before        the committed white tint (a second layer for glass inside glass) and the
- *                   inset thickness lines: bright along the top, faint along the bottom
+ *   the element     light blur + brightness on what is behind, a soft lifted shadow, and a faint
+ *                   dark hairline just outside the edge so the glass still reads on a white page
+ *   ::before        the committed white tint (a second layer for glass inside glass), a soft
+ *                   shade inside the edge, and the inset thickness lines: bright along the top,
+ *                   faint along the bottom
  *   ::after         the lit rim: a gradient masked down to a ring, bright where light catches
  *                   the edge and nearly gone along the sides (never a uniform border)
  *
@@ -26,11 +28,11 @@
     z-index: 1;
     border-radius: inherit;
     pointer-events: none;
-    background-color: var(--glass-tint);
+    background-image: linear-gradient(var(--glass-tint-angle), var(--glass-tint), var(--glass-tint-low));
     box-shadow:
+      inset 0 0 var(--glass-edge-shade-blur) var(--glass-edge-shade),
       inset 0 1px 0 var(--glass-inset-top),
       inset 0 -1px 0 var(--glass-inset-bottom);
-    transition: background-color var(--duration-fade) ease;
   }
 
   .glass-surface::after,
@@ -61,7 +63,9 @@
 
   /* Glass inside glass (buttons in a message or panel) gets a second, lighter layer of tint */
   .glass-surface .glass-surface::before {
-    background-image: linear-gradient(var(--glass-tint-nested) 0 0);
+    background-image:
+      linear-gradient(var(--glass-tint-nested) 0 0),
+      linear-gradient(var(--glass-tint-angle), var(--glass-tint), var(--glass-tint-low));
   }
 
   .glass-content {
@@ -83,13 +87,26 @@
     box-shadow: var(--glass-shadow-small);
   }
 
+  /* Round icon buttons (navigation): the same glass, as a circle */
+  .glass-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    box-shadow: var(--glass-shadow-small);
+  }
+
   @media (hover: hover) {
-    button.glass-control:hover {
+    button.glass-control:hover,
+    a.glass-control:hover,
+    a.glass-icon:hover {
       --glass-tint: var(--glass-tint-hover);
     }
   }
 
-  .glass-control:focus-visible {
+  .glass-control:focus-visible,
+  .glass-icon:focus-visible {
     outline: 2px solid var(--color-amber);
     outline-offset: 3px;
   }
