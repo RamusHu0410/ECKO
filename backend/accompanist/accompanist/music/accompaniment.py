@@ -16,8 +16,9 @@ from accompanist.music.voice_leading import lead_voices
 
 DEFAULT_PROGRAM = 81      # Lead 2 (sawtooth) — default synth accompaniment
 DEFAULT_VELOCITY = 100    # accompaniment base — loud, but under the melody
-# Melody uses the same synth family by default and remains relatively louder.
-MELODY_PROGRAM = 81       # Lead 2 (sawtooth)
+# Melody stays in the synth family but a distinct voice from the accompaniment,
+# so it doesn't blend in where a chord tone shares its pitch. It also plays louder.
+MELODY_PROGRAM = 80       # Lead 1 (square)
 MELODY_VELOCITY = 127     # loudest — the melody line leads
 ACCOMP_VELOCITY_SCALE = 1.0
 # Force every accompaniment note to this fixed velocity so per-style dynamic

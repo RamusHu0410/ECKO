@@ -13,6 +13,12 @@ export default defineConfig({
     // The browser calls /api/...; Vite forwards it to the Flask dev server on port 8000 with the
     // /api prefix removed (/api/upload → /upload), so requests stay same-origin and need no CORS.
     proxy: {
+      // Except the Auth0-protected API (backend/src/app/routes/auth.py, recordings.py, posts.py,
+      // users.py), which Flask itself serves under /api/..., so it's forwarded unchanged. Listed
+      // first: Vite uses the first rule that matches.
+      '^/api/(me|recordings|posts|users)(/|$)': {
+        target: 'http://localhost:8000',
+      },
       '/api': {
         target: 'http://localhost:8000',
         rewrite: (path) => path.replace(/^\/api/, ''),

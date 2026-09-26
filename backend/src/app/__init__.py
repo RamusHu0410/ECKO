@@ -4,7 +4,6 @@ from flask_cors import CORS
 from .config import config
 from .extensions import db, migrate
 from .routes.main import bp as main_bp
-from .routes.accompaniment import bp as accompaniment_bp
 from .routes.talk import bp as talk_bp
 
 
@@ -31,8 +30,7 @@ def create_app(config_name=None):
     from . import models  # noqa: F401
 
     # Register blueprints
-    app.register_blueprint(main_bp)
-    app.register_blueprint(accompaniment_bp, url_prefix='/accompaniment')
+    app.register_blueprint(main_bp)  # includes /accompaniment/styles and /accompaniment/generate
     app.register_blueprint(talk_bp, url_prefix='/talk')
 
     # API blueprints (Auth0-protected app data)

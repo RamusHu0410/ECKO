@@ -1,9 +1,15 @@
 import os
+import tempfile
 import time
+import uuid
 from math import isfinite
 
 import numpy as np
-from flask import Blueprint, jsonify, current_app, request, has_app_context
+from flask import Blueprint, jsonify, current_app, request, has_app_context, send_file, send_from_directory
+from werkzeug.utils import secure_filename
+
+from accompanist.generate import generate_accompaniment
+from accompanist.music.styles import STYLES
 
 from ..audio.handoff import sensible_tempo, to_engine_melody
 from ..audio.intake import AudioInputError, unique_upload_name
@@ -74,6 +80,9 @@ def upload_wav():
         warnings        problems with the recording, in words for the user
         clean_filename  the filtered copy of the recording
         audio_analysis  the full analysis (pitch track, segments, ...)
+        accompaniment   the accompanist's song for this hum: status, key, mode, progression,
+                        wav_filename, and url (GET it to play the WAV; /api/song/... from the
+                        browser). On failure: status "failed" + error; the upload still succeeds.
     400 → the file isn't a usable recording: {error}
     500 → the analysis itself failed: {error, details}
     """
@@ -120,6 +129,8 @@ def upload_wav():
         "upload %s: %d notes, %.1f BPM, %s %s, %+d cents, warnings=%s",
         filename, len(hum["melody"]), tempo, hum["key"], hum["mode"], hum["tuning_cents"], hum["warnings"],
     )
+    engine_melody = to_engine_melody(hum["melody"], tempo)
+    accompaniment = _compose(engine_melody, tempo, filename)
     response_data = {
         "status": "success",
         "message": "File uploaded and processed successfully",
@@ -128,7 +139,8 @@ def upload_wav():
         "size_bytes": file_size,
         "size_mb": round(file_size / (1024 * 1024), 2),
         "saved_path": filepath,
-        "melody": to_engine_melody(hum["melody"], tempo),
+        "melody": engine_melody,
+        "accompaniment": accompaniment,
         "tempo": tempo,
         "key": hum["key"],
         "mode": hum["mode"],
@@ -142,6 +154,184 @@ def upload_wav():
     # Audio libraries return NumPy scalars (notably ``numpy.bool`` from pitch voicing), which
     # Flask's JSON provider can't serialize.
     return jsonify(_json_safe(response_data)), 201
+
+
+def _compose(engine_melody, tempo, upload_name):
+    """Run the accompanist on the hum and save its MIDI + WAV in RECORDINGS_FOLDER.
+
+    Never fails the upload: if composing or rendering goes wrong, the error is reported in the
+    returned dict and the hum's analysis is still sent back.
+    """
+    if not engine_melody:
+        return {"status": "skipped", "error": "No notes were found in the hum."}
+    folder = current_app.config["RECORDINGS_FOLDER"]
+    os.makedirs(folder, exist_ok=True)
+    stem = os.path.splitext(upload_name)[0] + "_accompaniment"
+    midi_path = os.path.join(folder, stem + ".mid")
+    wav_path = os.path.join(folder, stem + ".wav")
+    started = time.time()
+    try:
+        result = generate_accompaniment(
+            {"melody": engine_melody, "tempo": tempo},
+            midi_path,
+            tempo=tempo,
+            render_wav=True,
+            wav_path=wav_path,
+        )
+    except Exception as exc:  # noqa: BLE001 - report it, keep the upload
+        current_app.logger.exception("Accompaniment generation failed")
+        return {"status": "failed", "error": str(exc)}
+
+    info = {
+        "status": "success" if result.wav_path else "midi_only",
+        "key": result.key,
+        "mode": result.mode,
+        "progression": result.progression_symbols,
+        "midi_filename": os.path.basename(result.midi_path),
+        "wav_filename": os.path.basename(result.wav_path) if result.wav_path else None,
+        # the browser calls /api/song/<name>; Vite forwards it here as /song/<name>
+        "url": f"/song/{os.path.basename(result.wav_path)}" if result.wav_path else None,
+        "warnings": result.warnings,
+        "time_seconds": round(time.time() - started, 3),
+    }
+    current_app.logger.info("accompaniment for %s: %s %s, %s", upload_name, info["key"], info["mode"], info["progression"])
+    return info
+
+
+@bp.route("/song/<path:name>", methods=["GET"])
+def get_song(name):
+    """Stream a generated accompaniment WAV (or MIDI) saved by /upload."""
+    safe = secure_filename(name)
+    if not safe or safe != name or not safe.endswith(("_accompaniment.wav", "_accompaniment.mid")):
+        return jsonify({"error": "Unknown song"}), 404
+    folder = os.path.abspath(current_app.config["RECORDINGS_FOLDER"])
+    if not os.path.isfile(os.path.join(folder, safe)):
+        return jsonify({"error": "Unknown song"}), 404
+    mimetype = "audio/wav" if safe.endswith(".wav") else "audio/midi"
+    return send_from_directory(folder, safe, mimetype=mimetype)
+
+
+@bp.route("/accompaniment/styles", methods=["GET"])
+def accompaniment_styles():
+    """List the available accompaniment styles."""
+    return jsonify({"styles": sorted(STYLES.keys())})
+
+
+@bp.route("/accompaniment/generate", methods=["POST"]) 
+def accompaniment_generate():
+    """Generate an accompaniment from a melody.
+
+    Request JSON:
+        {
+          "melody": [ {"hz": 60, "start": 0, "duration": 0.5}, ... ],
+          "key":   "C",         # optional; auto-detected if omitted
+          "mode":  "major",     # optional
+          "tempo": 120,          # optional
+          "style": "classical", # optional: piano|pop|cinematic|classical|jazz|asian_folk
+          "instrument": "synth", # optional; synth is the default
+          "format": "midi"       # optional: "midi" (default) | "wav" | "json"
+        }
+
+    Response:
+        * format=midi -> the .mid file (audio/midi)
+        * format=wav  -> the rendered .wav file (audio/wav)
+        * format=json -> metadata only (key, mode, progression, no file)
+    """
+    data = request.get_json(silent=True)
+    if not data or "melody" not in data:
+        return jsonify({"error": "Request must be JSON with a 'melody' array."}), 400
+
+    style = data.get("style", "classical")
+    if style not in STYLES:
+        return jsonify({
+            "error": f"Unknown style '{style}'.",
+            "available_styles": sorted(STYLES.keys()),
+        }), 400
+
+    out_format = (data.get("format") or "midi").lower()
+    if out_format not in ("midi", "wav", "json"):
+        return jsonify({"error": "format must be 'midi', 'wav', or 'json'."}), 400
+
+    # allow_edit_melody: whether the engine may alter the melody itself.
+    # Accepts "yes"/"no" (or true/false). Default is "no" — the melody line is
+    # left exactly as given unless the caller explicitly opts in.
+    _raw_allow = data.get("allow_edit_melody", "no")
+    allow_edit_melody = str(_raw_allow).strip().lower() in ("yes", "true", "1")
+
+    # instrument: named GM instrument for playback (synth, piano, guitar, ...).
+    instrument = data.get("instrument", "synth")
+
+    # modulation: optionally transpose the whole piece to a new key/mode.
+    modulate = data.get("modulate") or {}
+    modulate_to_key = modulate.get("key") if isinstance(modulate, dict) else None
+    modulate_to_mode = modulate.get("mode") if isinstance(modulate, dict) else None
+
+    # Build the input dict the engine understands (Kingsley's melody format).
+    melody_input = {
+        "melody": data["melody"],
+        "key": data.get("key", "C"),
+        "mode": data.get("mode", "major"),
+        "tempo": data.get("tempo", 120),
+    }
+
+    # Work in a temp dir; files are cleaned up unless returned.
+    out_dir = tempfile.mkdtemp(prefix="accompaniment_")
+    stem = uuid.uuid4().hex[:8]
+    midi_path = os.path.join(out_dir, f"{stem}.mid")
+
+    try:
+        result = generate_accompaniment(
+            melody_input,
+            midi_path,
+            style=style,
+            key=data.get("key"),
+            mode=data.get("mode"),
+            tempo=data.get("tempo"),
+            allow_edit_melody=allow_edit_melody,
+            instrument=instrument,
+            modulate_to_key=modulate_to_key,
+            modulate_to_mode=modulate_to_mode,
+            render_wav=(out_format == "wav"),
+        )
+    except (ValueError, TypeError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 - surface engine errors to client
+        current_app.logger.exception("Accompaniment generation failed")
+        return jsonify({"error": "Generation failed", "details": str(exc)}), 500
+
+    if out_format == "json":
+        return jsonify({
+            "status": "success",
+            "key": result.key,
+            "mode": result.mode,
+            "style": style,
+            "progression": result.progression_symbols,
+            "num_notes": len(result.melody_notes),
+            "warnings": result.warnings,
+        }), 200
+
+    if out_format == "wav":
+        if not result.wav_path or not os.path.exists(result.wav_path):
+            return jsonify({
+                "error": "WAV rendering unavailable (FluidSynth/soundfont missing).",
+                "warnings": result.warnings,
+            }), 503
+        # Not an attachment: the frontend streams this straight into an
+        # <audio> element / Web Audio for playback.
+        return send_file(
+            result.wav_path,
+            mimetype="audio/wav",
+            as_attachment=False,
+            download_name=f"accompaniment_{stem}.wav",
+        )
+
+    # Default: MIDI
+    return send_file(
+        result.midi_path,
+        mimetype="audio/midi",
+        as_attachment=True,
+        download_name=f"accompaniment_{stem}.mid",
+    )
 
 
 def _discard(path):

@@ -25,7 +25,7 @@ DEFAULT_BEATS_PER_BAR = 4.0
 # Debug bypass: while enabled, generate_accompaniment skips key detection,
 # modulation, melody editing, harmony, progression, voice leading, and style
 # generation. The output MIDI/WAV contains only the untouched input melody.
-DEBUG_BYPASS_GENERATION = True
+DEBUG_BYPASS_GENERATION = False
 
 
 @dataclass
@@ -72,6 +72,25 @@ def _melody_to_note_dicts(melody: Melody) -> list[dict]:
     ]
 
 
+def _resolve_program(instrument, warnings: list[str]) -> int:
+    """GM program for `instrument`: a name from INSTRUMENTS, or a GM number 0-127.
+
+    Unknown names fall back to the default synth (with a warning).
+    """
+    if isinstance(instrument, int) and not isinstance(instrument, bool):
+        if 0 <= instrument <= 127:
+            return instrument
+        warnings.append(f"GM program {instrument} is out of range; defaulting to synth.")
+        return INSTRUMENTS["synth"]
+    if instrument in INSTRUMENTS:
+        return INSTRUMENTS[instrument]
+    warnings.append(
+        f"Unknown instrument '{instrument}'; defaulting to synth. "
+        f"Options: {sorted(INSTRUMENTS)}"
+    )
+    return INSTRUMENTS["synth"]
+
+
 def generate_accompaniment(
     melody_input,
     midi_path: str = "accompaniment.mid",
@@ -83,7 +102,7 @@ def generate_accompaniment(
     beats_per_bar: float = DEFAULT_BEATS_PER_BAR,
     include_melody: bool = True,
     allow_edit_melody: bool = False,
-    instrument: str = "synth",
+    instrument: str | int = "synth",
     modulate_to_key: Optional[str] = None,
     modulate_to_mode: Optional[str] = None,
     render_wav: bool = False,
@@ -111,7 +130,8 @@ def generate_accompaniment(
             exactly as given and only the accompaniment reflects the style.
         instrument: Named instrument for playback, e.g. "synth", "synth_pad",
             "piano", "guitar", "guitar_jazz", "strings", "sax". Applies to
-            both tracks; defaults to "synth".
+            both tracks; defaults to "synth". A General MIDI program number
+            (0-127) is also accepted.
         modulate_to_key: Transpose the whole piece to this tonic (e.g. "G").
             The melody is shifted and the harmony re-derived in the new key.
         modulate_to_mode: Switch to this mode ("major"/"minor"). Combined with
@@ -135,17 +155,11 @@ def generate_accompaniment(
         resolved_tempo = tempo or float(melody.tempo)
         resolved_key = key or melody.key
         resolved_mode = mode or melody.mode
-        program = INSTRUMENTS.get(instrument, INSTRUMENTS["synth"])
-
         warnings.append(
             "DEBUG_BYPASS_GENERATION is enabled: all composition stages were "
             "skipped and only the original melody was rendered."
         )
-        if instrument not in INSTRUMENTS:
-            warnings.append(
-                f"Unknown instrument '{instrument}'; defaulting to synth. "
-                f"Options: {sorted(INSTRUMENTS)}"
-            )
+        program = _resolve_program(instrument, warnings)
 
         # An empty chord list means there is no accompaniment track content;
         # the untouched input melody is the only audible material.
@@ -252,12 +266,7 @@ def generate_accompaniment(
     )
 
     # 8-9. Style pattern -> MIDI (with the chosen instrument on both tracks)
-    program = INSTRUMENTS.get(instrument, INSTRUMENTS["synth"])
-    if instrument not in INSTRUMENTS:
-        warnings.append(
-            f"Unknown instrument '{instrument}'; defaulting to synth. "
-            f"Options: {sorted(INSTRUMENTS)}"
-        )
+    program = _resolve_program(instrument, warnings)
     render_accompaniment(
         progression,
         midi_path,

@@ -21,6 +21,10 @@ export default function SiteHeader({ route }: { route: Route }) {
         <IconLink to="profile" label="Profile" current={route}>
           <PersonIcon />
         </IconLink>
+        {/* The sign-in test page lives outside the app's router (see main.tsx), so a plain link. */}
+        <a href="/auth-test" className="glass-surface glass-control px-4 py-2 text-sm font-medium text-ink">
+          <span className="glass-content">Sign in</span>
+        </a>
       </nav>
     </header>
   )

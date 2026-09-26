@@ -121,6 +121,31 @@ def test_the_first_song_is_the_engines_song_on_synth(tmp_path):
     assert [track[:3] for track in song] == [(81, False, 100), (81, False, 100)]  # chords and tune on the default synth
 
 
+@pytest.mark.parametrize("style", [None, "piano", "classical", "jazz"])
+def test_the_song_keeps_the_accompanists_tracks_untouched(tmp_path, style):
+    """What the app plays is exactly what the accompanist engine renders for the same request."""
+    import random
+
+    from accompanist.generate import generate_accompaniment
+
+    settings = SongSettings(style=style)
+    request = engine_request(TUNE, settings)
+    melody = {"melody": request.pop("melody"), "tempo": request["tempo"]}
+    engine_path = str(tmp_path / "engine.mid")
+    random.seed("hum.wav")
+    generate_accompaniment(melody, engine_path, **request)
+
+    def notes(path):
+        return [
+            (track.program, [(n.pitch, round(n.start, 4), round(n.end, 4), n.velocity) for n in track.notes])
+            for track in pretty_midi.PrettyMIDI(path).instruments
+        ]
+
+    app_path = str(tmp_path / "song.mid")
+    write_midi(app_path, TUNE, settings, seed="hum.wav")
+    assert notes(app_path) == notes(engine_path)
+
+
 @pytest.mark.parametrize("style", [None, "jazz"])  # jazz plays random fills, so this also checks the seed
 def test_adding_instruments_leaves_the_lead_note_for_note(tmp_path, style):
     before = tracks(tmp_path, SongSettings(style=style))
