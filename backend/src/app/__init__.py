@@ -28,6 +28,11 @@ def create_app(config_name=None):
     
     return app
 
+
+def main():
+    """Run the development server for the ``uv run app`` console command."""
+    create_app().run()
+
 # For direct execution (optional)
 if __name__ == '__main__':
     app = create_app()

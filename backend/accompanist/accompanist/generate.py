@@ -9,7 +9,7 @@ Chains every stage:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from accompanist.models.chord import Chord
@@ -58,8 +58,11 @@ def _melody_to_note_dicts(melody: Melody) -> list[dict]:
     beats), and `hz` actually holds MIDI pitch numbers throughout this project.
     """
     return [
-        {"pitch": int(round(n.hz)), "start": float(n.start),
-         "duration": float(n.duration)}
+        {
+            "pitch": int(round(n.hz)),
+            "start": float(n.start),
+            "duration": float(n.duration),
+        }
         for n in melody.notes
     ]
 
@@ -80,7 +83,7 @@ def generate_accompaniment(
     modulate_to_mode: Optional[str] = None,
     render_wav: bool = False,
     wav_path: Optional[str] = None,
-) -> AccompanimentResult:
+):
     """Generate an accompaniment for a melody, end to end.
 
     Args:
@@ -112,9 +115,7 @@ def generate_accompaniment(
     warnings: list[str] = []
 
     if style not in STYLES:
-        raise ValueError(
-            f"Unknown style '{style}'. Choose from: {sorted(STYLES)}"
-        )
+        raise ValueError(f"Unknown style '{style}'. Choose from: {sorted(STYLES)}")
 
     # 1. JSON -> Melody
     melody = _melody_from_input(melody_input)
@@ -219,7 +220,7 @@ def generate_accompaniment(
             warnings.append(f"WAV rendering skipped: {exc}")
             out_wav = None
 
-    return AccompanimentResult(
+    res = AccompanimentResult(
         key=resolved_key,
         mode=resolved_mode,
         melody_notes=melody_notes,
@@ -228,3 +229,5 @@ def generate_accompaniment(
         wav_path=out_wav,
         warnings=warnings,
     )
+    json_str = json.dumps(asdict(res), indent=2)
+    return json_str

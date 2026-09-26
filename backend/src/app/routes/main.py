@@ -1,5 +1,8 @@
 import os
 import time
+from math import isfinite
+
+import numpy as np
 from flask import Blueprint, jsonify, current_app, request
 from werkzeug.utils import secure_filename
 
@@ -7,6 +10,22 @@ from werkzeug.utils import secure_filename
 from ..audio.processor import AudioProcessor, load_and_process_wav
 
 bp = Blueprint('main', __name__)
+
+
+def _json_safe(value):
+    """Convert NumPy values and non-finite floats into JSON-compatible data."""
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float) and not isfinite(value):
+        return None
+    return value
+
 
 def allowed_file(filename):
     """Check if file has allowed extension."""
@@ -136,7 +155,9 @@ def upload_wav():
             }
         
         print(f"[ROUTE] Returning response (total time: {time.time() - request_start:.3f}s)")
-        return jsonify(response_data), 201
+        # Audio libraries return NumPy scalars (notably ``numpy.bool`` from
+        # pitch voicing). Flask's JSON provider cannot serialize those values.
+        return jsonify(_json_safe(response_data)), 201
         
     except Exception as e:
         current_app.logger.error(f"File upload failed: {str(e)}")
