@@ -1,0 +1,904 @@
+
+# 2026-09-25 23:14:56.639051
++y
+
+# 2026-09-25 23:15:05.240170
++q
+
+# 2026-09-25 23:16:20.588152
++/quit
+
+# 2026-09-25 23:26:42.302652
++Can you help me initialize flask using my CURRENT folder structure and create an endpoint to recieve .wav file from frontend 
+
+# 2026-09-25 23:27:14.909701
++a
+
+# 2026-09-25 23:28:44.438505
++n
+
+# 2026-09-25 23:29:45.393098
++/quit
+
+# 2026-09-25 23:42:09.988907
++how do i run the flask backend 
+
+# 2026-09-25 23:42:26.899293
++y
+
+# 2026-09-25 23:42:30.841176
++a
+
+# 2026-09-25 23:42:58.246848
++y
+
+# 2026-09-25 23:43:15.954026
++a
+
+# 2026-09-25 23:45:34.132826
++/ask
+
+# 2026-09-25 23:46:15.725654
++How to i run the flask backend. Just tell me what needs to be changed
+
+# 2026-09-25 23:56:09.982364
++can you explain how my codebase work. Just the backend folder. Each file 
+
+# 2026-09-26 00:02:33.568148
++/quit
+
+# 2026-09-26 00:03:19.982386
++explain to me the new codebase
+
+# 2026-09-26 00:03:24.949599
++/ask
+
+# 2026-09-26 00:03:31.120995
++explain to me the new codebase
+
+# 2026-09-26 00:04:34.542860
++can you explain to me how the entire backend work for the src folder (just the flask backend)
+
+# 2026-09-26 00:05:09.982970
++a
+
+# 2026-09-26 00:06:00.535408
++y
+
+# 2026-09-26 00:09:24.134793
++/quit
+
+# 2026-09-26 00:11:46.545279
++Can you please help me decide if the wav file is valid?
+
+# 2026-09-26 00:14:26.559469
++/ask
+
+# 2026-09-26 00:14:39.476167
++How do i know if the .wav file is corrupted or not when sent by frontend
+
+# 2026-09-26 00:16:27.735385
++a
+
+# 2026-09-26 00:16:53.074378
++y
+
+# 2026-09-26 00:17:09.745980
++/quit
+
+# 2026-09-26 00:18:27.191974
++How do i know if the .wav file is corrupted or not when sent by frontend
+
+# 2026-09-26 00:19:21.069077
++a
+
+# 2026-09-26 00:23:18.151496
++Can you create a file (if appropriate) or modify an existing file to load the wav file and import libraries to be able to process the wav file?
+
+# 2026-09-26 00:24:09.171670
++y
+
+# 2026-09-26 00:28:00.212197
++/ask
+
+# 2026-09-26 00:28:11.006627
++do i need to install anything with uv or is built in (short ans)
+
+# 2026-09-26 00:28:28.038986
++y
+
+# 2026-09-26 00:29:11.251737
++/quit
+
+# 2026-09-26 00:30:07.311984
++Can you add a file in backend/src/app that loads the .wav file from the frontend so that I could process that wav file?
+
+# 2026-09-26 00:30:17.510358
++y
+
+# 2026-09-26 00:36:11.128846
++Now can you extract duration of like when a sound is present, and extrac the frequency in hz and the volume and make it like a dictionary format
+
+# 2026-09-26 00:42:31.487807
++Can you make it so that you add print statements or similar stuff that can test whether is working or not
+
+# 2026-09-26 00:58:14.811910
++Can you make it so that it outputs stuff in the console or smh? I cannot see the output.
+
+# 2026-09-26 01:14:11.068713
++How do i make it so that after the extraction it outputs a dictionary and i can call the function from other python files
+
+# 2026-09-26 01:20:03.076093
++/ask
+
+# 2026-09-26 01:20:37.880228
++how does another python file call the function that returns the dictionary / json of the notes? And btw each note has the start, end, duration, volume and pitch (in hz)
+
+# 2026-09-26 01:21:39.335770
++/code
+
+# 2026-09-26 01:21:53.802006
++can you just implement it 
+
+# 2026-09-26 01:24:33.642259
++/ask
+
+# 2026-09-26 01:25:01.865642
++explain the entire backend/src/app folder and each file and the core structural parts so that i understand the architecutre and able to debug the codebase myself later
+
+# 2026-09-26 01:26:01.616877
++a
+
+# 2026-09-26 01:31:13.707053
++/code
+
+# 2026-09-26 01:40:40.422689
++/ask
+
+# 2026-09-26 01:40:43.041811
++Explain codebase in src/app and go more in depth into the mechanics of each function so i can debug codebases and know where everything is wrong and stuff?
+
+# 2026-09-26 01:40:53.737510
++/quit
+
+# 2026-09-26 07:27:51.119167
++In backend/src/app. Can you fix it so that the processor.py in the audio file uses this structure: 
++TEST_JSON = """
++{
++  "melody": [
++    {"hz": 60, "start": 0, "duration": 0.5},
++    {"hz": 64, "start": 0.5, "duration": 0.5},
++    {"hz": 67, "start": 1, "duration": 1}
++  ],
++  "key": "C",
++  "mode": "major",
++  "tempo": 100
++}
++""" and can you start to remove debug statements and create a tests folder inside src so i can test run my code (with the test files)
+
+# 2026-09-26 07:27:53.830402
++y
+
+# 2026-09-26 07:38:30.577688
++/quit
+
+# 2026-09-26 07:38:44.079131
++> In backend/src/app. Can you fix it so that the processor.py in the audio file uses this structure:
++> TEST_JSON = """
++> {
++>   "melody": [
++>     {"hz": 60, "start": 0, "duration": 0.5},
++>     {"hz": 64, "start": 0.5, "duration": 0.5},
++>     {"hz": 67, "start": 1, "duration": 1}
++>   ],
++>   "key": "C",
++>   "mode": "major",
++>   "tempo": 100
++> }
++> """ and can you start to remove debug statements and create a tests folder inside src so i can test run my code (with the test files)
+
+# 2026-09-26 07:38:47.044250
++y
+
+# 2026-09-26 08:50:16.656772
++Can you make test files for everything in src/app
+
+# 2026-09-26 08:51:48.491919
++/quit
+
+# 2026-09-26 08:52:53.197780
++can you make test files for everything in src/app
+
+# 2026-09-26 08:53:04.148606
++/quit
+
+# 2026-09-26 08:53:19.279421
++can you make test files for everything in src/app inside the tests folder in src
+
+# 2026-09-26 08:53:38.623783
++y
+
+# 2026-09-26 08:54:41.997297
++add to the current readme.md file in the backend folder and specify is documentation of how to run the test files
+
+# 2026-09-26 08:54:50.198717
++y
+
+# 2026-09-26 08:55:15.143780
++n
+
+# 2026-09-26 08:55:59.329484
++No can you say what commands to run in the readme file
+
+# 2026-09-26 08:56:09.375817
++n
+
+# 2026-09-26 08:56:26.733306
++/quit
+
+# 2026-09-26 09:11:38.444053
++How to fix all this? src/tests/test_app.py .....                                                                                                                                                     [ 13%]
++src/tests/test_audio_processor.py .....FFFF                                                                                                                                     [ 38%]
++src/tests/test_config.py ....                                                                                                                                                   [ 50%]
++src/tests/test_init.py ..F                                                                                                                                                      [ 58%]
++src/tests/test_routes_accompaniment.py FFFF                                                                                                                                     [ 69%]
++src/tests/test_routes_main.py .......FF.F                                                                                                                                       [100%]
++
++====================================================================================== FAILURES =======================================================================================
++__________________________________________________________________________________ test_build_melody __________________________________________________________________________________
++
++    def test_build_melody():
++        analysis = {
++            "segments": [],
++            "pitch": [],
++            "volume": [],
++            "spectral": {},
++        }
++>       melody = _build_melody(analysis)
++                 ^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:53:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++analysis = {'segments': [], 'pitch': [], 'volume': [], 'spectral': {}}
++
++    def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
++        """Convert detected sound segments into the MIDI-note API melody format."""
++        pitch = analysis.get("pitch", {})
++>       times = np.asarray(pitch.get("times", []), dtype=float)
++                           ^^^^^^^^^
++E       AttributeError: 'list' object has no attribute 'get'
++
++src/app/audio/processor.py:712: AttributeError
++_________________________________________________________________________________ test_quick_analyze __________________________________________________________________________________
++
++    def test_quick_analyze():
++>       result = quick_analyze("tests/fixtures/test.wav")
++                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:58:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/audio/processor.py:791: in quick_analyze
++    full_result = processor.process_audio(
++src/app/audio/processor.py:586: in process_audio
++    audio, sr = self.load_wav(filepath)
++                ^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++self = <src.app.audio.processor.AudioProcessor object at 0x10fb36d70>, filepath = 'tests/fixtures/test.wav'
++
++    def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
++        """
++        Load WAV file and return audio data and sample rate.
++
++        Args:
++            filepath: Path to WAV file
++
++        Returns:
++            Tuple of (audio_data, sample_rate)
++            audio_data is mono float32 array normalized to [-1, 1]
++        """
++        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
++        start_time = time.time()
++
++        if not os.path.exists(filepath):
++            error_msg = f"WAV file not found: {filepath}"
++            self._debug_print(f"ERROR: {error_msg}", "ERROR")
++>           raise FileNotFoundError(error_msg)
++E           FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++
++src/app/audio/processor.py:124: FileNotFoundError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++2026-09-26 09:10:07,958 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:103 Audio processing libraries available: librosa, scipy, soundfile
++______________________________________________________________________________ test_load_and_process_wav ______________________________________________________________________________
++
++tmp_path = PosixPath('/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-2/test_load_and_process_wav0')
++
++    def test_load_and_process_wav(tmp_path):
++>       result = load_and_process_wav(str(tmp_path / "test.wav"))
++                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:63:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/audio/processor.py:944: in load_and_process_wav
++    return analyze_audio_file(filepath, target_sr, debug=debug, **kwargs)
++           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++src/app/audio/processor.py:762: in analyze_audio_file
++    analysis = processor.process_audio(
++src/app/audio/processor.py:586: in process_audio
++    audio, sr = self.load_wav(filepath)
++                ^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++self = <src.app.audio.processor.AudioProcessor object at 0x10fb362c0>
++filepath = '/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-2/test_load_and_process_wav0/test.wav'
++
++    def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
++        """
++        Load WAV file and return audio data and sample rate.
++
++        Args:
++            filepath: Path to WAV file
++
++        Returns:
++            Tuple of (audio_data, sample_rate)
++            audio_data is mono float32 array normalized to [-1, 1]
++        """
++        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
++        start_time = time.time()
++
++        if not os.path.exists(filepath):
++            error_msg = f"WAV file not found: {filepath}"
++            self._debug_print(f"ERROR: {error_msg}", "ERROR")
++>           raise FileNotFoundError(error_msg)
++E           FileNotFoundError: WAV file not found: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-2/test_load_and_process_wav0/test.wav
++
++src/app/audio/processor.py:124: FileNotFoundError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++2026-09-26 09:10:07,978 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:103 Audio processing libraries available: librosa, scipy, soundfile
++_________________________________________________________________________________ test_extract_notes __________________________________________________________________________________
++
++    def test_extract_notes():
++>       notes = extract_notes("tests/fixtures/test.wav")
++                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:68:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/audio/processor.py:845: in extract_notes
++    result = processor.process_audio(
++src/app/audio/processor.py:586: in process_audio
++    audio, sr = self.load_wav(filepath)
++                ^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++self = <src.app.audio.processor.AudioProcessor object at 0x10fae27b0>, filepath = 'tests/fixtures/test.wav'
++
++    def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
++        """
++        Load WAV file and return audio data and sample rate.
++
++        Args:
++            filepath: Path to WAV file
++
++        Returns:
++            Tuple of (audio_data, sample_rate)
++            audio_data is mono float32 array normalized to [-1, 1]
++        """
++        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
++        start_time = time.time()
++
++        if not os.path.exists(filepath):
++            error_msg = f"WAV file not found: {filepath}"
++            self._debug_print(f"ERROR: {error_msg}", "ERROR")
++>           raise FileNotFoundError(error_msg)
++E           FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++
++src/app/audio/processor.py:124: FileNotFoundError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++2026-09-26 09:10:08,003 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:103 Audio processing libraries available: librosa, scipy, soundfile
++________________________________________________________________________ test_create_app_registers_blueprints _________________________________________________________________________
++
++app = <Flask 'app.__init__'>
++
++    def test_create_app_registers_blueprints(app):
++        from src.app.routes.main import bp as main_bp
++        from src.app.routes.accompaniment import bp as accomp_bp
++>       assert main_bp in app.blueprints.values()
++E       AssertionError: assert <Blueprint 'main'> in dict_values([<Blueprint 'main'>, <Blueprint 'accompaniment'>])
++E        +  where dict_values([<Blueprint 'main'>, <Blueprint 'accompaniment'>]) = <built-in method values of dict object at 0x10fbacb40>()
++E        +    where <built-in method values of dict object at 0x10fbacb40> = {'main': <Blueprint 'main'>, 'accompaniment': <Blueprint 'accompaniment'>}.values
++E        +      where {'main': <Blueprint 'main'>, 'accompaniment': <Blueprint 'accompaniment'>} = <Flask 'app.__init__'>.blueprints
++
++src/tests/test_init.py:20: AssertionError
++__________________________________________________________________________________ test_list_styles ___________________________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_list_styles(client):
++        response = client.get("/styles")
++>       assert response.status_code == 200
++E       assert 404 == 200
++E        +  where 404 = <WrapperTestResponse streamed [404 NOT FOUND]>.status_code
++
++src/tests/test_routes_accompaniment.py:7: AssertionError
++____________________________________________________________________________ test_generate_missing_melody _____________________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_generate_missing_melody(client):
++        response = client.post("/generate", json={})
++>       assert response.status_code == 400
++E       assert 404 == 400
++E        +  where 404 = <WrapperTestResponse streamed [404 NOT FOUND]>.status_code
++
++src/tests/test_routes_accompaniment.py:14: AssertionError
++______________________________________________________________________________ test_generate_with_melody ______________________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_generate_with_melody(client):
++        response = client.post(
++            "/generate",
++            json={
++                "melody": [
++                    {"hz": 440.0, "start": 0.0, "duration": 1.0}
++                ],
++                "style": "classical",
++            },
++        )
++>       assert response.status_code == 200
++E       assert 404 == 200
++E        +  where 404 = <WrapperTestResponse streamed [404 NOT FOUND]>.status_code
++
++src/tests/test_routes_accompaniment.py:27: AssertionError
++_____________________________________________________________________________ test_generate_invalid_style _____________________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_generate_invalid_style(client):
++        response = client.post(
++            "/generate",
++            json={
++                "melody": [
++                    {"hz": 440.0, "start": 0.0, "duration": 1.0}
++                ],
++                "style": "nonexistent",
++            },
++        )
++>       assert response.status_code == 400
++E       assert 404 == 400
++E        +  where 404 = <WrapperTestResponse streamed [404 NOT FOUND]>.status_code
++
++src/tests/test_routes_accompaniment.py:42: AssertionError
++________________________________________________________________________________ test_allowed_file_wav ________________________________________________________________________________
++
++    def test_allowed_file_wav():
++>       assert allowed_file("test.wav") is True
++               ^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_routes_main.py:41:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/routes/main.py:35: in allowed_file
++    in current_app.config["UPLOAD_EXTENSIONS"]
++       ^^^^^^^^^^^^^^^^^^
++.venv/lib/python3.14/site-packages/werkzeug/local.py:318: in __get__
++    obj = instance._get_current_object()
++          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++    def _get_current_object() -> T:
++        try:
++            obj = local.get()
++        except LookupError:
++>           raise RuntimeError(unbound_message) from None
++E           RuntimeError: Working outside of application context.
++E
++E           This typically means that you attempted to use functionality that needed
++E           the current application. To solve this, set up an application context
++E           with app.app_context(). See the documentation for more information.
++
++.venv/lib/python3.14/site-packages/werkzeug/local.py:519: RuntimeError
++________________________________________________________________________________ test_allowed_file_mp3 ________________________________________________________________________________
++
++    def test_allowed_file_mp3():
++>       assert allowed_file("test.mp3") is False
++               ^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_routes_main.py:45:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/routes/main.py:35: in allowed_file
++    in current_app.config["UPLOAD_EXTENSIONS"]
++       ^^^^^^^^^^^^^^^^^^
++.venv/lib/python3.14/site-packages/werkzeug/local.py:318: in __get__
++    obj = instance._get_current_object()
++          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++    def _get_current_object() -> T:
++        try:
++            obj = local.get()
++        except LookupError:
++>           raise RuntimeError(unbound_message) from None
++E           RuntimeError: Working outside of application context.
++E
++E           This typically means that you attempted to use functionality that needed
++E           the current application. To solve this, set up an application context
++E           with app.app_context(). See the documentation for more information.
++
++.venv/lib/python3.14/site-packages/werkzeug/local.py:519: RuntimeError
++______________________________________________________________________________ test_allowed_file_hidden _______________________________________________________________________________
++
++    def test_allowed_file_hidden():
++>       assert allowed_file(".wav") is False
++               ^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_routes_main.py:53:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/routes/main.py:35: in allowed_file
++    in current_app.config["UPLOAD_EXTENSIONS"]
++       ^^^^^^^^^^^^^^^^^^
++.venv/lib/python3.14/site-packages/werkzeug/local.py:318: in __get__
++    obj = instance._get_current_object()
++          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++    def _get_current_object() -> T:
++        try:
++            obj = local.get()
++        except LookupError:
++>           raise RuntimeError(unbound_message) from None
++E           RuntimeError: Working outside of application context.
++E
++E           This typically means that you attempted to use functionality that needed
++E           the current application. To solve this, set up an application context
++E           with app.app_context(). See the documentation for more information.
++
++.venv/lib/python3.14/site-packages/werkzeug/local.py:519: RuntimeError
++================================================================================== warnings summary ===================================================================================
++.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464
++  /Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: dependencies
++
++    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
++
++.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464
++  /Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: requires-python
++
++    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++=============================================================================== short test summary info ===============================================================================
++FAILED src/tests/test_audio_processor.py::test_build_melody - AttributeError: 'list' object has no attribute 'get'
++FAILED src/tests/test_audio_processor.py::test_quick_analyze - FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++FAILED src/tests/test_audio_processor.py::test_load_and_process_wav - FileNotFoundError: WAV file not found: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-2/test_load_and_process_wav0/test.wav
++FAILED src/tests/test_audio_processor.py::test_extract_notes - FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++FAILED src/tests/test_init.py::test_create_app_registers_blueprints - AssertionError: assert <Blueprint 'main'> in dict_values([<Blueprint 'main'>, <Blueprint 'accompaniment'>])
++FAILED src/tests/test_routes_accompaniment.py::test_list_styles - assert 404 == 200
++FAILED src/tests/test_routes_accompaniment.py::test_generate_missing_melody - assert 404 == 400
++FAILED src/tests/test_routes_accompaniment.py::test_generate_with_melody - assert 404 == 200
++FAILED src/tests/test_routes_accompaniment.py::test_generate_invalid_style - assert 404 == 400
++FAILED src/tests/test_routes_main.py::test_allowed_file_wav - RuntimeError: Working outside of application context.
++FAILED src/tests/test_routes_main.py::test_allowed_file_mp3 - RuntimeError: Working outside of application context.
++FAILED src/tests/test_routes_main.py::test_allowed_file_hidden - RuntimeError: Working outside of application context.
+
+# 2026-09-26 09:11:45.763199
++y
+
+# 2026-09-26 09:12:47.408237
++a
+
+# 2026-09-26 09:14:55.523118
++y
+
+# 2026-09-26 09:16:09.433404
++ok can you consolidate the codebase now and also run the tests to makesure everything in src/app is working (like it outputs actual notes and their duration)
+
+# 2026-09-26 09:20:03.377623
++fix the rest of the errors: platform darwin -- Python 3.14.0, pytest-9.1.1, pluggy-1.6.0
++rootdir: /Users/kingsleyleon/dev/projects/ECKO-1/backend
++configfile: pyproject.toml
++plugins: cov-7.1.0, anyio-4.15.1
++collected 36 items
++
++src/tests/test_app.py ...FF                                                                                                                                                     [ 13%]
++src/tests/test_audio_processor.py ......FFF                                                                                                                                     [ 38%]
++src/tests/test_config.py ....                                                                                                                                                   [ 50%]
++src/tests/test_init.py ...                                                                                                                                                      [ 58%]
++src/tests/test_routes_accompaniment.py F.F.                                                                                                                                     [ 69%]
++src/tests/test_routes_main.py ...........                                                                                                                                       [100%]
++
++====================================================================================== FAILURES =======================================================================================
++____________________________________________________________________ test_upload_serializes_numpy_boolean_analysis ____________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>, monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10f8b4d60>
++
++    def test_upload_serializes_numpy_boolean_analysis(client, monkeypatch):
++        """Regression test for NumPy bool values causing upload responses to 500."""
++
++        class FakeProcessor:
++            def __init__(self, **_kwargs):
++                pass
++
++            def process_audio(self, _filepath):
++                return {
++                    "pitch": {"voiced_flag": [np.bool_(True), np.bool_(False)]},
++                    "segments": [],
++                    "non_finite": np.float64("nan"),
++                }
++
++        monkeypatch.setattr(main_routes, "AudioProcessor", FakeProcessor)
++
++        response = client.post(
++            "/upload",
++            data={"file": (BytesIO(b"RIFFfakeWAVE"), "recording.wav")},
++            content_type="multipart/form-data",
++        )
++
++        assert response.status_code == 201
++>       analysis = response.get_json()["audio_analysis"]
++                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++E       KeyError: 'audio_analysis'
++
++src/tests/test_app.py:58: KeyError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++[ROUTE] POST /upload - Upload endpoint called
++[ROUTE] Received file: recording.wav, content_type: audio/x-wav
++[ROUTE] Saving file to: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav
++[ROUTE] Upload folder: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0
++[ROUTE] File exists before save: False
++[ROUTE] File saved successfully in 0.000s
++[ROUTE] File size: 12 bytes (0.00 MB)
++[ROUTE] File exists after save: True
++[ROUTE] Starting audio processing...
++[ROUTE] Creating AudioProcessor with target_sr=22050
++2026-09-26 09:18:15,230 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++[09:18:15] ✅ Audio processing libraries available: librosa, scipy, soundfile
++[ROUTE] Calling processor.process_audio()...
++[09:18:15] ℹ️ ============================================================
++[09:18:15] ℹ️ PROCESSING AUDIO: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav
++[09:18:15] ℹ️ ============================================================
++[09:18:15] ⚙️ Loading WAV file: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav
++[09:18:15] 🔍 Loading with librosa...
++2026-09-26 09:18:15,230 - app.__init__ - ERROR - Audio processing failed: Error opening '/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav': Error in WAV file. No 'data' chunk marker.
++[ROUTE] ERROR: Audio processing failed after 0.000s: Error opening '/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav': Error in WAV file. No 'data' chunk marker.
++[ROUTE] Returning response (total time: 0.003s)
++-------------------------------------------------------------------------------- Captured stderr call ---------------------------------------------------------------------------------
++Traceback (most recent call last):
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/src/app/routes/main.py", line 124, in upload_wav
++    processing_results = processor.process_audio(filepath)
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/src/app/audio/processor.py", line 587, in process_audio
++    audio, sr = self.load_wav(filepath)
++                ~~~~~~~~~~~~~^^^^^^^^^^
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/src/app/audio/processor.py", line 129, in load_wav
++    audio, sr = self._load_with_librosa(filepath)
++                ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/src/app/audio/processor.py", line 153, in _load_with_librosa
++    audio, sr = librosa.load(filepath, sr=self.target_sr, mono=True)
++                ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/librosa/core/audio.py", line 156, in load
++    y, sr_native = __soundfile_load(path, offset, duration, dtype)
++                   ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/librosa/core/audio.py", line 179, in __soundfile_load
++    context = sf.SoundFile(path)
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/soundfile.py", line 708, in __init__
++    self._file = self._open(file, mode_int, closefd)
++                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
++  File "/Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/soundfile.py", line 1296, in _open
++    raise LibsndfileError(err, prefix=f"Error opening {self.name!r}: ")
++soundfile.LibsndfileError: Error opening '/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav': Error in WAV file. No 'data' chunk marker.
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:104 Audio processing libraries available: librosa, scipy, soundfile
++ERROR    app.__init__:main.py:166 Audio processing failed: Error opening '/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_upload_serializes_numpy_b0/recording.wav': Error in WAV file. No 'data' chunk marker.
++______________________________________________________________________ test_accompaniment_rejects_missing_melody ______________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_accompaniment_rejects_missing_melody(client):
++        response = client.post("/accompaniment/generate", json={})
++
++>       assert response.status_code == 400
++E       assert 404 == 400
++E        +  where 404 = <WrapperTestResponse streamed [404 NOT FOUND]>.status_code
++
++src/tests/test_app.py:66: AssertionError
++_________________________________________________________________________________ test_quick_analyze __________________________________________________________________________________
++
++    def test_quick_analyze():
++>       result = quick_analyze("tests/fixtures/test.wav")
++                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:58:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/audio/processor.py:803: in quick_analyze
++    full_result = processor.process_audio(
++src/app/audio/processor.py:587: in process_audio
++    audio, sr = self.load_wav(filepath)
++                ^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++self = <src.app.audio.processor.AudioProcessor object at 0x10f8b76f0>, filepath = 'tests/fixtures/test.wav'
++
++    def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
++        """
++        Load WAV file and return audio data and sample rate.
++
++        Args:
++            filepath: Path to WAV file
++
++        Returns:
++            Tuple of (audio_data, sample_rate)
++            audio_data is mono float32 array normalized to [-1, 1]
++        """
++        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
++        start_time = time.time()
++
++        if not os.path.exists(filepath):
++            error_msg = f"WAV file not found: {filepath}"
++            self._debug_print(f"ERROR: {error_msg}", "ERROR")
++>           raise FileNotFoundError(error_msg)
++E           FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++
++src/app/audio/processor.py:125: FileNotFoundError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++2026-09-26 09:18:15,253 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:104 Audio processing libraries available: librosa, scipy, soundfile
++______________________________________________________________________________ test_load_and_process_wav ______________________________________________________________________________
++
++tmp_path = PosixPath('/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_load_and_process_wav0')
++
++    def test_load_and_process_wav(tmp_path):
++>       result = load_and_process_wav(str(tmp_path / "test.wav"))
++                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:63:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/audio/processor.py:955: in load_and_process_wav
++    return analyze_audio_file(filepath, target_sr, debug=debug, **kwargs)
++           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++src/app/audio/processor.py:772: in analyze_audio_file
++    analysis = processor.process_audio(
++src/app/audio/processor.py:587: in process_audio
++    audio, sr = self.load_wav(filepath)
++                ^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++self = <src.app.audio.processor.AudioProcessor object at 0x10f78b410>
++filepath = '/private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_load_and_process_wav0/test.wav'
++
++    def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
++        """
++        Load WAV file and return audio data and sample rate.
++
++        Args:
++            filepath: Path to WAV file
++
++        Returns:
++            Tuple of (audio_data, sample_rate)
++            audio_data is mono float32 array normalized to [-1, 1]
++        """
++        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
++        start_time = time.time()
++
++        if not os.path.exists(filepath):
++            error_msg = f"WAV file not found: {filepath}"
++            self._debug_print(f"ERROR: {error_msg}", "ERROR")
++>           raise FileNotFoundError(error_msg)
++E           FileNotFoundError: WAV file not found: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_load_and_process_wav0/test.wav
++
++src/app/audio/processor.py:125: FileNotFoundError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++2026-09-26 09:18:15,294 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:104 Audio processing libraries available: librosa, scipy, soundfile
++_________________________________________________________________________________ test_extract_notes __________________________________________________________________________________
++
++    def test_extract_notes():
++>       notes = extract_notes("tests/fixtures/test.wav")
++                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++src/tests/test_audio_processor.py:68:
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++src/app/audio/processor.py:857: in extract_notes
++    result = processor.process_audio(
++src/app/audio/processor.py:587: in process_audio
++    audio, sr = self.load_wav(filepath)
++                ^^^^^^^^^^^^^^^^^^^^^^^
++_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
++
++self = <src.app.audio.processor.AudioProcessor object at 0x10f8a2360>, filepath = 'tests/fixtures/test.wav'
++
++    def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
++        """
++        Load WAV file and return audio data and sample rate.
++
++        Args:
++            filepath: Path to WAV file
++
++        Returns:
++            Tuple of (audio_data, sample_rate)
++            audio_data is mono float32 array normalized to [-1, 1]
++        """
++        self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
++        start_time = time.time()
++
++        if not os.path.exists(filepath):
++            error_msg = f"WAV file not found: {filepath}"
++            self._debug_print(f"ERROR: {error_msg}", "ERROR")
++>           raise FileNotFoundError(error_msg)
++E           FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++
++src/app/audio/processor.py:125: FileNotFoundError
++-------------------------------------------------------------------------------- Captured stdout call ---------------------------------------------------------------------------------
++2026-09-26 09:18:15,320 - src.app.audio.processor - INFO - Audio processing libraries available: librosa, scipy, soundfile
++---------------------------------------------------------------------------------- Captured log call ----------------------------------------------------------------------------------
++INFO     src.app.audio.processor:processor.py:104 Audio processing libraries available: librosa, scipy, soundfile
++__________________________________________________________________________________ test_list_styles ___________________________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_list_styles(client):
++        response = client.get("/styles")
++        assert response.status_code == 200
++        data = json.loads(response.data)
++>       assert isinstance(data, list)
++E       AssertionError: assert False
++E        +  where False = isinstance({'styles': ['asian_folk', 'cinematic', 'classical', 'jazz', 'piano', 'pop']}, list)
++
++src/tests/test_routes_accompaniment.py:9: AssertionError
++______________________________________________________________________________ test_generate_with_melody ______________________________________________________________________________
++
++client = <FlaskClient <Flask 'app.__init__'>>
++
++    def test_generate_with_melody(client):
++        response = client.post(
++            "/generate",
++            json={
++                "melody": [
++                    {"hz": 440.0, "start": 0.0, "duration": 1.0}
++                ],
++                "style": "classical",
++            },
++        )
++>       assert response.status_code == 200
++E       assert 400 == 200
++E        +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
++
++src/tests/test_routes_accompaniment.py:27: AssertionError
++================================================================================== warnings summary ===================================================================================
++.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464
++  /Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: dependencies
++
++    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
++
++.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464
++  /Users/kingsleyleon/dev/projects/ECKO-1/backend/.venv/lib/python3.14/site-packages/_pytest/config/__init__.py:1464: PytestConfigWarning: Unknown config option: requires-python
++
++    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++=============================================================================== short test summary info ===============================================================================
++FAILED src/tests/test_app.py::test_upload_serializes_numpy_boolean_analysis - KeyError: 'audio_analysis'
++FAILED src/tests/test_app.py::test_accompaniment_rejects_missing_melody - assert 404 == 400
++FAILED src/tests/test_audio_processor.py::test_quick_analyze - FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++FAILED src/tests/test_audio_processor.py::test_load_and_process_wav - FileNotFoundError: WAV file not found: /private/var/folders/f8/d68vk59d6gs5gcr3q_mcqnl80000gn/T/pytest-of-kingsleyleon/pytest-3/test_load_and_process_wav0/test.wav
++FAILED src/tests/test_audio_processor.py::test_extract_notes - FileNotFoundError: WAV file not found: tests/fixtures/test.wav
++FAILED src/tests/test_routes_accompaniment.py::test_list_styles - AssertionError: assert False
++FAILED src/tests/test_routes_accompaniment.py::test_generate_with_melody - assert 400 == 200
+
+# 2026-09-26 09:20:05.341589
++y
+
+# 2026-09-26 09:24:18.279861
++n
+
+# 2026-09-26 09:25:29.926772
++y
+
+# 2026-09-26 09:29:05.141916
++n
