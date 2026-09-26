@@ -16,6 +16,6 @@ def test_create_app_with_config_name():
 
 def test_create_app_registers_blueprints(app):
     from app.routes.main import bp as main_bp
-    from app.routes.accompaniment import bp as accomp_bp
     assert main_bp in app.blueprints.values()
-    assert accomp_bp in app.blueprints.values()
+    rules = {rule.rule for rule in app.url_map.iter_rules()}
+    assert {"/accompaniment/styles", "/accompaniment/generate"} <= rules
