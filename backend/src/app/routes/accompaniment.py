@@ -66,6 +66,11 @@ def generate():
     # instrument: named GM instrument for playback (piano, guitar, ...).
     instrument = data.get("instrument", "piano")
 
+    # modulation: optionally transpose the whole piece to a new key/mode.
+    modulate = data.get("modulate") or {}
+    modulate_to_key = modulate.get("key") if isinstance(modulate, dict) else None
+    modulate_to_mode = modulate.get("mode") if isinstance(modulate, dict) else None
+
     # Build the input dict the engine understands (Kingsley's melody format).
     melody_input = {
         "melody": data["melody"],
@@ -89,6 +94,8 @@ def generate():
             tempo=data.get("tempo"),
             allow_edit_melody=allow_edit_melody,
             instrument=instrument,
+            modulate_to_key=modulate_to_key,
+            modulate_to_mode=modulate_to_mode,
             render_wav=(out_format == "wav"),
         )
     except (ValueError, TypeError) as exc:

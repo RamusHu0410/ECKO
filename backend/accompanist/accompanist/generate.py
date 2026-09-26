@@ -76,6 +76,8 @@ def generate_accompaniment(
     include_melody: bool = True,
     allow_edit_melody: bool = False,
     instrument: str = "piano",
+    modulate_to_key: Optional[str] = None,
+    modulate_to_mode: Optional[str] = None,
     render_wav: bool = False,
     wav_path: Optional[str] = None,
 ) -> AccompanimentResult:
@@ -97,6 +99,10 @@ def generate_accompaniment(
             exactly as given and only the accompaniment reflects the style.
         instrument: Named instrument for playback, e.g. "piano", "guitar",
             "guitar_jazz", "strings", "sax". Applies to both tracks.
+        modulate_to_key: Transpose the whole piece to this tonic (e.g. "G").
+            The melody is shifted and the harmony re-derived in the new key.
+        modulate_to_mode: Switch to this mode ("major"/"minor"). Combined with
+            modulate_to_key, e.g. C major -> A minor.
         render_wav: If True, also render a WAV via FluidSynth.
         wav_path: WAV output path (defaults to midi_path with .wav).
 
@@ -125,6 +131,21 @@ def generate_accompaniment(
         resolved_mode = resolved_mode or detected.mode
 
     resolved_tempo = tempo or float(melody.tempo)
+
+    # 2a. Modulation: transpose the piece into a different key/mode if asked.
+    if modulate_to_key is not None or modulate_to_mode is not None:
+        from accompanist.music.modulation import resolve_target, modulate_notes
+
+        dest_key, dest_mode, shift = resolve_target(
+            resolved_key, resolved_mode, modulate_to_key, modulate_to_mode
+        )
+        if shift != 0:
+            melody_notes = modulate_notes(melody_notes, resolved_key, dest_key)
+        warnings.append(
+            f"Modulated from {resolved_key} {resolved_mode} to "
+            f"{dest_key} {dest_mode} (transposed {shift:+d} semitones)."
+        )
+        resolved_key, resolved_mode = dest_key, dest_mode
 
     # 2b. Scale flavoring + melody editing.
     #     Harmony is always derived from scale-correct notes for scale-based
