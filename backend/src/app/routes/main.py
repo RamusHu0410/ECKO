@@ -2,6 +2,9 @@ import os
 from flask import Blueprint, jsonify, current_app, request
 from werkzeug.utils import secure_filename
 
+# Import the new audio processor
+from ..audio.processor import AudioProcessor, load_and_process_wav
+
 bp = Blueprint('main', __name__)
 
 def allowed_file(filename):
@@ -51,14 +54,37 @@ def upload_wav():
         file.save(filepath)
         file_size = os.path.getsize(filepath)
         
-        return jsonify({
-            "status": "success",
-            "message": "File uploaded successfully",
-            "filename": filename,
-            "size_bytes": file_size,
-            "size_mb": round(file_size / (1024 * 1024), 2),
-            "saved_path": filepath
-        }), 201
+        # Process the audio file
+        try:
+            # Initialize processor with config sample rate (default 22050)
+            target_sr = current_app.config.get('AUDIO_TARGET_SR', 22050)
+            processor = AudioProcessor(target_sr=target_sr)
+            processing_results = processor.process_audio(filepath)
+            
+            # Add processing results to response
+            response_data = {
+                "status": "success",
+                "message": "File uploaded and processed successfully",
+                "filename": filename,
+                "size_bytes": file_size,
+                "size_mb": round(file_size / (1024 * 1024), 2),
+                "saved_path": filepath,
+                "audio_analysis": processing_results
+            }
+        except Exception as proc_error:
+            current_app.logger.error(f"Audio processing failed: {str(proc_error)}")
+            # Still return success for upload, but note processing failure
+            response_data = {
+                "status": "success",
+                "message": "File uploaded but processing failed",
+                "filename": filename,
+                "size_bytes": file_size,
+                "size_mb": round(file_size / (1024 * 1024), 2),
+                "saved_path": filepath,
+                "processing_error": str(proc_error)
+            }
+        
+        return jsonify(response_data), 201
         
     except Exception as e:
         current_app.logger.error(f"File upload failed: {str(e)}")
