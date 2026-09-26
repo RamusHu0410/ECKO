@@ -1,27 +1,57 @@
+"""Reads a hummed WAV and finds its notes.
+
+    WAV file ─ inspect_wav ─ load (mono, 22050 Hz) ─ filter_audio ─ pYIN pitch + loudness per frame
+             ─ notes.segment_notes ─ melody (MIDI note, start and duration in seconds) + tempo + key
+
+``filter_audio`` is the one cleanup chain every analysis runs through: DC offset removed,
+rumble and mains hum (50/60 Hz) filtered out, hiss above the voice's range filtered out, steady
+background noise subtracted, then the level normalized. The accompanist engine wants beats, not
+seconds; ``app.audio.handoff`` does that conversion.
+"""
+
+import dataclasses
+import logging
 import os
 import sys
-import numpy as np
-from typing import Tuple, Optional, Dict, Any, List
-import logging
 import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import librosa
-import librosa.feature
 import librosa.beat
+import librosa.feature
+import numpy as np
 import soundfile as sf
 from scipy.signal import butter, sosfiltfilt
 
-# Configure logging to output to console
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+from .intake import AudioInputError, inspect_wav
+from .notes import DEFAULT_SETTINGS, NoteSettings, estimate_tempo_from_onsets, estimate_tuning, noise_gate, segment_notes
+
 logger = logging.getLogger(__name__)
+
+# --- the cleanup chain (filter_audio) ---------------------------------------------------------
+# The high-pass takes rumble, handling noise and mains hum: run forwards and backwards it is
+# ~-24 dB at 50 Hz and ~-13 dB at 60 Hz, ~-2 dB at E2 (82 Hz). Narrow 50/60 Hz notches were
+# tried and dropped: their long ring, run backwards by filtfilt, put a ghost ~60 Hz "note" in
+# the silence before the first real one.
+HIGHPASS_HZ = 70.0
+LOWPASS_HZ = 6000.0  # hiss; a whistle's fundamental stays under ~2.5 kHz
+NORMALIZED_PEAK = 0.9
+
+# --- pitch tracking ---------------------------------------------------------------------------
+PITCH_FMIN_HZ = 65.0  # C2: a low male hum
+PITCH_FMAX_HZ = 2000.0  # ~B6: whistling and high sopranos (was 800 Hz, which misread whistles)
+
+# --- warnings about the recording itself ------------------------------------------------------
+CLIPPED_LEVEL = 0.999  # samples at or above this (full scale 1.0) are clipped
+CLIPPED_SHARE = 0.001  # more than this share of clipped samples earns a warning
+QUIET_PEAK = 0.03  # a recording that never gets louder than ~-30 dBFS is too quiet
+UNPITCHED_SHARE = 0.5  # more than this share of the sound unpitched: not a clear single tune
+
+SILENT_RMS = 0.001
 
 
 def console_print(message: str, level: str = "INFO"):
-    """Print to console with timestamp and flush immediately."""
+    """Print to console with timestamp and flush immediately (debug mode only)."""
     timestamp = time.strftime("%H:%M:%S")
     prefix = {
         "INFO": "ℹ️",
@@ -35,11 +65,10 @@ def console_print(message: str, level: str = "INFO"):
 
 
 class AudioProcessor:
-    """Handles loading and processing of WAV audio files.
+    """Loads, cleans and analyses a WAV recording.
 
-    Uses librosa for analysis (pitch, tempo, key, spectral features),
-    soundfile for precise file I/O, and scipy.signal for the bandpass
-    filter used by ``clean_audio``. All three are required dependencies.
+    Uses librosa for analysis (pitch, tempo, spectral features), soundfile for file I/O, and
+    scipy.signal for the filters in ``filter_audio``.
     """
 
     def __init__(
@@ -50,13 +79,11 @@ class AudioProcessor:
         debug: bool = False,
     ):
         """
-        Initialize audio processor.
-
         Args:
-            target_sr: Target sample rate for processing (default 22050 Hz)
-            hop_length: Number of samples between successive frames
-            frame_length: Length of the FFT window
-            debug: Enable debug print statements
+            target_sr: Sample rate every recording is resampled to before analysis
+            hop_length: Samples between frames for the volume/spectral features
+            frame_length: FFT window for the volume/spectral features
+            debug: Print what each step is doing
         """
         self.target_sr = target_sr
         self.hop_length = hop_length
@@ -64,99 +91,67 @@ class AudioProcessor:
         self.debug = debug
 
     def _debug_print(self, message: str, level: str = "DEBUG"):
-        """Print debug message if debug mode is enabled."""
         if self.debug:
             console_print(message, level)
             logger.debug(message)
 
+    # ------------------------------------------------------------------ loading and cleaning
+
     def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
-        """
-        Load WAV file and return audio data and sample rate.
+        """The recording as mono float32 at ``target_sr``, whatever its channels, rate or bit depth.
 
-        Args:
-            filepath: Path to WAV file
-
-        Returns:
-            Tuple of (audio_data, sample_rate)
-            audio_data is mono float32 array normalized to [-1, 1],
-            resampled to ``target_sr``.
+        Raises AudioInputError if the file is missing, unreadable, empty, too short or too long.
         """
         self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
-        start_time = time.time()
-
-        if not os.path.exists(filepath):
-            error_msg = f"WAV file not found: {filepath}"
-            self._debug_print(f"ERROR: {error_msg}", "ERROR")
-            raise FileNotFoundError(error_msg)
-
-        audio, sr = librosa.load(filepath, sr=self.target_sr, mono=True)
-        audio = audio.astype(np.float32)
-
-        load_time = time.time() - start_time
-        self._debug_print(
-            f"Loaded audio: {len(audio)} samples, {sr}Hz, duration: {len(audio) / sr:.2f}s (took {load_time:.3f}s)",
-            "SUCCESS",
-        )
-        self._debug_print(
-            f"Audio stats: min={np.min(audio):.4f}, max={np.max(audio):.4f}, mean={np.mean(audio):.4f}, std={np.std(audio):.4f}"
-        )
-
+        inspect_wav(filepath)
+        try:
+            audio, sr = librosa.load(filepath, sr=self.target_sr, mono=True)
+        except Exception as exc:  # a header that parses but data that doesn't
+            raise AudioInputError("That file isn't a readable WAV recording.") from exc
+        audio = np.nan_to_num(audio.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+        if audio.size == 0:
+            raise AudioInputError("The recording is empty.")
+        self._debug_print(f"Loaded {len(audio)} samples at {sr} Hz ({len(audio) / sr:.2f}s)", "SUCCESS")
         return audio, sr
 
-    def clean_audio(
-        self,
-        audio: np.ndarray,
-        sr: int,
-        fmin: float = 80.0,
-        fmax: float = 1200.0,
-        top_db: float = 30.0,
-    ) -> np.ndarray:
+    def filter_audio(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        """The cleanup chain every analysis runs on. Same length as the input, so times still
+        match the original recording.
+
+        1. DC offset removed (a cheap mic's constant bias skews every loudness measure).
+        2. High-pass at HIGHPASS_HZ for rumble and mains hum.
+        3. Low-pass at LOWPASS_HZ for hiss.
+        4. Steady background noise subtracted (``reduce_noise``).
+        5. Peak normalized to NORMALIZED_PEAK, so a quiet recording reads like a loud one.
         """
-        Clean up a mono audio signal so individual notes come through clearly.
+        cleaned = np.asarray(audio, dtype=np.float64)
+        if cleaned.size == 0:
+            return cleaned.astype(np.float32)
+        cleaned = cleaned - np.mean(cleaned)
 
-        Applies a bandpass filter around the expected note range (to strip
-        rumble/hum below fmin and hiss above fmax), trims leading/trailing
-        silence, and peak-normalizes the result.
+        nyquist = sr / 2.0
+        sections = [butter(4, HIGHPASS_HZ, btype="highpass", fs=sr, output="sos")]
+        if LOWPASS_HZ < nyquist * 0.95:
+            sections.append(butter(4, LOWPASS_HZ, btype="lowpass", fs=sr, output="sos"))
+        sos = np.vstack(sections)
+        if cleaned.size > 3 * (2 * len(sos) + 1):  # sosfiltfilt needs a little signal to pad with
+            cleaned = sosfiltfilt(sos, cleaned)
 
-        Args:
-            audio: Mono audio signal
-            sr: Sample rate
-            fmin: Lower cutoff frequency in Hz
-            fmax: Upper cutoff frequency in Hz
-            top_db: Silence threshold (dB) used when trimming edges
+        cleaned = self.reduce_noise(cleaned.astype(np.float32), sr)
 
-        Returns:
-            Cleaned mono float32 audio signal
-        """
-        self._debug_print(
-            f"Cleaning audio (bandpass {fmin}-{fmax}Hz, trim top_db={top_db})",
-            "PROCESS",
-        )
-        cleaned = audio.astype(np.float32)
-
-        if len(cleaned) > 0:
-            nyquist = sr / 2.0
-            low = max(fmin / nyquist, 1e-4)
-            high = min(fmax / nyquist, 0.999)
-            if low < high:
-                sos = butter(4, [low, high], btype="bandpass", output="sos")
-                cleaned = sosfiltfilt(sos, cleaned).astype(np.float32)
-            else:
-                self._debug_print(
-                    "Skipping bandpass filter: invalid cutoff range", "WARNING"
-                )
-
-            cleaned, _ = librosa.effects.trim(cleaned, top_db=top_db)
-
-        peak = float(np.max(np.abs(cleaned))) if len(cleaned) > 0 else 0.0
+        peak = float(np.max(np.abs(cleaned)))
         if peak > 0:
-            cleaned = (cleaned / peak).astype(np.float32)
+            cleaned = cleaned * (NORMALIZED_PEAK / peak)
+        self._debug_print(f"Filtered audio (peak before normalizing {peak:.4f})", "SUCCESS")
+        return cleaned.astype(np.float32)
 
-        self._debug_print(
-            f"Cleaned audio: {len(cleaned)} samples, peak before norm={peak:.4f}",
-            "SUCCESS",
-        )
-        return cleaned
+    def clean_audio(self, audio: np.ndarray, sr: int, trim: bool = True, top_db: float = 30.0) -> np.ndarray:
+        """``filter_audio``, then (by default) the silence at either end trimmed off. Trimming
+        shifts every time, so the analysis itself never trims; this is for making a listenable copy."""
+        cleaned = self.filter_audio(audio, sr)
+        if trim and cleaned.size:
+            cleaned, _ = librosa.effects.trim(cleaned, top_db=top_db)
+        return cleaned.astype(np.float32)
 
     def reduce_noise(
         self,
@@ -165,49 +160,21 @@ class AudioProcessor:
         n_fft: int = 2048,
         oversubtract: float = 1.6,
         spectral_floor: float = 0.05,
-        top_db: float = 30.0,
+        quiet_margin_db: float = 6.0,
+        min_contrast_db: float = 15.0,
     ) -> np.ndarray:
+        """Subtract steady background noise (room hiss, fan, mic hum) by spectral subtraction.
+
+        The noise profile is learned only from frames that are clearly quiet: within
+        ``quiet_margin_db`` of the recording's quietest tenth *and* at least ``min_contrast_db``
+        under its loud parts. (It used to take "30 dB under the peak", which a phone recording
+        with its noise floor at -25 dB never reaches, so noisy recordings were never cleaned.)
+        A note held for the whole clip has no quiet frames, so nothing is learned and the audio
+        is returned unchanged; guessing a profile there would subtract the note itself.
+
+        Each frame is cleaned on its own (no smoothing across time), so the gaps between notes
+        stay exactly where they were.
         """
-        Suppress steady background noise (room hiss, mic hum) via spectral
-        subtraction, before any pitch/volume/spectral analysis runs.
-
-        The noise profile is learned only from stretches ``detect_sound_segments``
-        already considers silent (lead-in/lead-out and the gaps between hummed
-        notes) — never guessed from a statistic over the whole clip. That
-        matters because a note can be held steady for the entire clip with no
-        internal silence at all; a blind per-bin percentile would then read
-        the note's own steady magnitude as "noise" and subtract it away
-        (tried and confirmed: it silenced a continuous 440Hz tone completely).
-        Learning strictly from confirmed silence means the sung note is never
-        mistaken for noise, at the cost of skipping denoising entirely when
-        there isn't enough confirmed silence to learn from (safe no-op rather
-        than a guess).
-
-        Also deliberately does *not* smooth the subtracted spectrum across
-        time: doing so was tried and rejected too, because averaging a loud
-        frame's magnitude into its silent neighbours partially refills the
-        gaps between notes, which merges notes that ``detect_sound_segments``
-        would otherwise tell apart. Each frame is denoised independently so
-        segment boundaries stay exactly where the original audio put them.
-
-        Args:
-            audio: Mono audio signal
-            sr: Sample rate
-            n_fft: FFT window size for the noise-estimation STFT
-            oversubtract: How aggressively to subtract the learned noise
-                floor (>1 subtracts more than the raw estimate)
-            spectral_floor: Minimum fraction of the original magnitude kept
-                per bin, to avoid gating everything to zero
-            top_db: Silence threshold (dB) used to find the confirmed-silent
-                stretches the noise profile is learned from
-
-        Returns:
-            Denoised mono float32 audio signal, same length as the input.
-            Unchanged if there isn't enough confirmed silence to learn a
-            noise profile from.
-        """
-        self._debug_print(f"Reducing background noise (oversubtract={oversubtract})", "PROCESS")
-
         if audio.size == 0 or not np.any(audio):
             return audio.astype(np.float32)
 
@@ -215,36 +182,19 @@ class AudioProcessor:
         stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
         magnitude, phase = np.abs(stft), np.angle(stft)
 
-        voiced_intervals = librosa.effects.split(
-            audio, top_db=top_db, frame_length=n_fft, hop_length=hop_length
+        frame_db = 20 * np.log10(np.maximum(np.sqrt(np.mean(magnitude**2, axis=0)), 1e-10))
+        quiet_limit = min(
+            np.percentile(frame_db, 10) + quiet_margin_db,
+            np.percentile(frame_db, 95) - min_contrast_db,
         )
-        frame_times = librosa.frames_to_time(
-            np.arange(magnitude.shape[1]), sr=sr, hop_length=hop_length
-        )
-        is_voiced_frame = np.zeros(magnitude.shape[1], dtype=bool)
-        for start_sample, end_sample in voiced_intervals:
-            is_voiced_frame |= (frame_times >= start_sample / sr) & (
-                frame_times <= end_sample / sr
-            )
-        noise_only_frames = magnitude[:, ~is_voiced_frame]
-
+        noise_only_frames = magnitude[:, frame_db <= quiet_limit]
         if noise_only_frames.shape[1] < 2:
-            self._debug_print(
-                "No confirmed silence to learn a noise profile from; skipping denoise",
-                "WARNING",
-            )
+            self._debug_print("No clearly quiet frames to learn the noise from; skipping denoise", "WARNING")
             return audio.astype(np.float32)
 
         noise_floor = np.mean(noise_only_frames, axis=1, keepdims=True)
-        subtracted = magnitude - oversubtract * noise_floor
-        cleaned_magnitude = np.maximum(subtracted, spectral_floor * magnitude)
-
-        cleaned = librosa.istft(
-            cleaned_magnitude * np.exp(1j * phase),
-            hop_length=hop_length,
-            length=len(audio),
-        )
-
+        cleaned_magnitude = np.maximum(magnitude - oversubtract * noise_floor, spectral_floor * magnitude)
+        cleaned = librosa.istft(cleaned_magnitude * np.exp(1j * phase), hop_length=hop_length, length=len(audio))
         self._debug_print(
             f"Noise reduction: mean magnitude {np.mean(magnitude):.4f} -> {np.mean(cleaned_magnitude):.4f}",
             "SUCCESS",
@@ -252,16 +202,9 @@ class AudioProcessor:
         return cleaned.astype(np.float32)
 
     def get_audio_info(self, filepath: str) -> Dict[str, Any]:
-        """
-        Get basic info about WAV file without loading full audio.
-
-        Returns:
-            Dict with keys: duration, sample_rate, channels, frames, format
-        """
-        self._debug_print(f"Getting audio info for: {filepath}")
-
+        """duration, sample_rate, channels, frames, format and subtype, from the file header."""
         info = sf.info(filepath)
-        result = {
+        return {
             "duration": info.duration,
             "sample_rate": info.samplerate,
             "channels": info.channels,
@@ -270,192 +213,71 @@ class AudioProcessor:
             "subtype": info.subtype,
         }
 
-        self._debug_print(f"Audio info: {result}")
-        return result
+    # ------------------------------------------------------------------ analysis
 
     def detect_sound_segments(
         self, audio: np.ndarray, sr: int, top_db: float = 30, min_duration: float = 0.1
     ) -> List[Dict[str, float]]:
-        """
-        Detect segments where sound is present (non-silent regions).
-
-        Args:
-            audio: Audio signal
-            sr: Sample rate
-            top_db: Threshold in decibels below reference to consider as silence
-            min_duration: Minimum duration of a sound segment in seconds
-
-        Returns:
-            List of dicts with 'start', 'end', 'duration' for each sound segment
-        """
-        self._debug_print(
-            f"Detecting sound segments (top_db={top_db}, min_duration={min_duration}s)",
-            "PROCESS",
-        )
-
-        intervals = librosa.effects.split(
-            audio,
-            top_db=top_db,
-            frame_length=self.frame_length,
-            hop_length=self.hop_length,
-        )
-
-        self._debug_print(
-            f"Found {len(intervals)} raw intervals from librosa.effects.split"
-        )
-
-        # Convert frame indices to time
+        """Stretches where there's sound at all (for the silence statistics). Notes are found from
+        the pitch track instead (see ``notes.segment_notes``): loudness alone can't tell a legato
+        C-D-E apart from one long note."""
+        intervals = librosa.effects.split(audio, top_db=top_db, frame_length=self.frame_length, hop_length=self.hop_length)
         segments = []
-        for i, (start_frame, end_frame) in enumerate(intervals):
-            start_time = start_frame / sr
-            end_time = end_frame / sr
-            duration = end_time - start_time
-
-            self._debug_print(
-                f"  Interval {i}: frames {start_frame}-{end_frame} -> {start_time:.3f}s-{end_time:.3f}s (duration: {duration:.3f}s)"
-            )
-
-            if duration >= min_duration:
-                segments.append(
-                    {
-                        "start": float(start_time),
-                        "end": float(end_time),
-                        "duration": float(duration),
-                    }
-                )
-            else:
-                self._debug_print(f"    -> Filtered out (duration < {min_duration}s)")
-
-        total_sound = sum(s["duration"] for s in segments)
-        self._debug_print(
-            f"Final segments: {len(segments)}, total sound duration: {total_sound:.3f}s",
-            "SUCCESS",
-        )
-
+        for start_sample, end_sample in intervals:  # librosa returns sample indices
+            start, end = start_sample / sr, end_sample / sr
+            if end - start >= min_duration:
+                segments.append({"start": float(start), "end": float(end), "duration": float(end - start)})
+        self._debug_print(f"Sound segments: {len(segments)}")
         return segments
 
     def extract_pitch(
-        self, audio: np.ndarray, sr: int, fmin: float = 80.0, fmax: float = 800.0
+        self, audio: np.ndarray, sr: int, fmin: float = PITCH_FMIN_HZ, fmax: float = PITCH_FMAX_HZ
     ) -> Dict[str, Any]:
+        """Fundamental frequency per frame (pYIN), with each frame's loudness alongside.
+
+        The window is ~50 ms rather than self.frame_length (~93 ms): a hummed note wavers
+        (vibrato, 5-7 Hz), and a window spanning much of a vibrato cycle pools a moving pitch
+        into one biased estimate (a +/-100 Hz wobble around 440 Hz read as ~465 Hz with the wider
+        window, ~447 Hz with this one). It's floored at the two periods of fmin pYIN needs.
         """
-        Extract fundamental frequency (pitch) using PYIN algorithm.
+        fmax = min(fmax, sr / 2 * 0.9)
+        frame_length = max(int(np.ceil(2 * sr / fmin)), min(self.frame_length, int(sr * 0.05)))
+        hop_length = max(1, frame_length // 4)
+        self._debug_print(f"pYIN {fmin:.0f}-{fmax:.0f} Hz, frame {frame_length}, hop {hop_length}", "PROCESS")
 
-        Args:
-            audio: Audio signal
-            sr: Sample rate
-            fmin: Minimum frequency to detect
-            fmax: Maximum frequency to detect
-
-        Returns:
-            Dict with pitch information
-        """
-        self._debug_print(f"Extracting pitch (fmin={fmin}Hz, fmax={fmax}Hz)", "PROCESS")
-
-        # A hummed note wavers in pitch (vibrato) rather than holding steady.
-        # self.frame_length (2048 samples, ~93ms at 22050Hz) is sized for
-        # spectral/volume features, but a window that wide spans a large
-        # fraction of a typical vibrato cycle (5-7Hz, ~150-200ms period).
-        # PYIN then estimates one f0 per window by pooling a moving pitch
-        # into a single period-length guess, which biases the estimate
-        # upward as the vibrato swing widens (confirmed empirically: a
-        # +/-100Hz wobble around 440Hz drifted the recovered median to
-        # ~465Hz with the wider window, vs ~447Hz with this one). Use a
-        # window short enough to resolve the wobble, floored at the two
-        # periods of fmin PYIN needs for a stable estimate at all.
-        min_frame_for_fmin = int(np.ceil(2 * sr / fmin))
-        pitch_frame_length = max(min_frame_for_fmin, min(self.frame_length, int(sr * 0.05)))
-        pitch_hop_length = max(1, pitch_frame_length // 4)
-
-        # Use PYIN for pitch detection
-        self._debug_print(
-            f"Running librosa.pyin (frame_length={pitch_frame_length}, hop_length={pitch_hop_length})..."
-        )
-        start_time = time.time()
         f0, voiced_flag, voiced_probs = librosa.pyin(
-            audio,
-            fmin=fmin,
-            fmax=fmax,
-            sr=sr,
-            frame_length=pitch_frame_length,
-            hop_length=pitch_hop_length,
+            audio, fmin=fmin, fmax=fmax, sr=sr, frame_length=frame_length, hop_length=hop_length
         )
-        pyin_time = time.time() - start_time
-        self._debug_print(f"PYIN completed in {pyin_time:.3f}s")
-
-        # Get time stamps for each frame
-        times = librosa.frames_to_time(
-            np.arange(len(f0)), sr=sr, hop_length=pitch_hop_length
-        )
-
-        # Filter only voiced frames
+        # Loudness on a shorter window than the pitch (~25 ms), on the same frame grid, so the
+        # brief dip of a re-sung note ("da-da") isn't averaged away.
+        rms = librosa.feature.rms(y=audio, frame_length=2 * hop_length, hop_length=hop_length)[0]
+        frames = min(len(f0), len(rms))
+        f0, voiced_flag, voiced_probs, rms = f0[:frames], voiced_flag[:frames], voiced_probs[:frames], rms[:frames]
+        times = librosa.frames_to_time(np.arange(frames), sr=sr, hop_length=hop_length)
         voiced_f0 = f0[voiced_flag]
+        has_voice = voiced_f0.size > 0
 
-        self._debug_print(
-            f"Total frames: {len(f0)}, Voiced frames: {np.sum(voiced_flag)} ({100 * np.sum(voiced_flag) / len(f0):.1f}%)"
-        )
-        if len(voiced_f0) > 0:
-            self._debug_print(
-                f"Pitch range: {np.nanmin(voiced_f0):.1f}Hz - {np.nanmax(voiced_f0):.1f}Hz"
-            )
-            self._debug_print(
-                f"Mean pitch: {np.nanmean(voiced_f0):.1f}Hz, Median: {np.nanmedian(voiced_f0):.1f}Hz"
-            )
-
-        result = {
+        return {
             "frequencies": f0.tolist(),
             "times": times.tolist(),
-            # ``ndarray.tolist()`` can preserve NumPy boolean scalar types in
-            # some NumPy versions; convert explicitly for JSON API consumers.
+            # tolist() can keep NumPy bool scalars on some versions; JSON needs plain bools
             "voiced_flag": [bool(flag) for flag in voiced_flag],
             "voiced_probabilities": voiced_probs.tolist(),
-            "mean_hz": float(np.nanmean(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
-            "median_hz": float(np.nanmedian(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
-            "min_hz": float(np.nanmin(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
-            "max_hz": float(np.nanmax(voiced_f0)) if len(voiced_f0) > 0 else 0.0,
-            "voiced_duration": float(np.sum(voiced_flag) * pitch_hop_length / sr),
-            "total_frames": len(f0),
+            "rms_db": (20 * np.log10(np.maximum(rms, 1e-10))).tolist(),
+            "mean_hz": float(np.nanmean(voiced_f0)) if has_voice else 0.0,
+            "median_hz": float(np.nanmedian(voiced_f0)) if has_voice else 0.0,
+            "min_hz": float(np.nanmin(voiced_f0)) if has_voice else 0.0,
+            "max_hz": float(np.nanmax(voiced_f0)) if has_voice else 0.0,
+            "voiced_duration": float(np.sum(voiced_flag) * hop_length / sr),
+            "total_frames": int(frames),
             "voiced_frames": int(np.sum(voiced_flag)),
         }
 
-        return result
-
     def extract_volume_envelope(self, audio: np.ndarray, sr: int) -> Dict[str, Any]:
-        """
-        Extract volume (amplitude) envelope using RMS energy.
-
-        Args:
-            audio: Audio signal
-            sr: Sample rate
-
-        Returns:
-            Dict with volume envelope information
-        """
-        self._debug_print("Extracting volume envelope (RMS energy)", "PROCESS")
-
-        # Compute RMS energy
-        self._debug_print("Computing RMS with librosa.feature.rms...")
-        rms = librosa.feature.rms(
-            y=audio, frame_length=self.frame_length, hop_length=self.hop_length
-        )[0]
-
-        # Convert to dB
+        """RMS loudness over time."""
+        rms = librosa.feature.rms(y=audio, frame_length=self.frame_length, hop_length=self.hop_length)[0]
         rms_db = librosa.amplitude_to_db(rms, ref=np.max)
-
-        # Get time stamps
-        times = librosa.frames_to_time(
-            np.arange(len(rms)), sr=sr, hop_length=self.hop_length
-        )
-
-        self._debug_print(
-            f"RMS frames: {len(rms)}, time range: {times[0]:.3f}s - {times[-1]:.3f}s"
-        )
-        self._debug_print(
-            f"RMS stats: mean={np.mean(rms):.6f}, max={np.max(rms):.6f}, min={np.min(rms):.6f}"
-        )
-        self._debug_print(
-            f"RMS dB stats: mean={np.mean(rms_db):.1f}dB, max={np.max(rms_db):.1f}dB, min={np.min(rms_db):.1f}dB"
-        )
-
+        times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=self.hop_length)
         return {
             "rms_values": rms.tolist(),
             "rms_db": rms_db.tolist(),
@@ -468,84 +290,23 @@ class AudioProcessor:
         }
 
     def extract_spectral_features(self, audio: np.ndarray, sr: int) -> Dict[str, Any]:
-        """
-        Extract additional spectral features.
+        """Spectral centroid, rolloff, bandwidth and zero-crossing rate."""
+        centroid = librosa.feature.spectral_centroid(y=audio, sr=sr, hop_length=self.hop_length)[0]
+        rolloff = librosa.feature.spectral_rolloff(y=audio, sr=sr, hop_length=self.hop_length)[0]
+        bandwidth = librosa.feature.spectral_bandwidth(y=audio, sr=sr, hop_length=self.hop_length)[0]
+        zcr = librosa.feature.zero_crossing_rate(audio, frame_length=self.frame_length, hop_length=self.hop_length)[0]
+        times = librosa.frames_to_time(np.arange(len(centroid)), sr=sr, hop_length=self.hop_length)
 
-        Args:
-            audio: Audio signal
-            sr: Sample rate
+        def summary(values, with_times=False):
+            out = {"values": values.tolist(), "mean": float(np.mean(values)), "std": float(np.std(values))}
+            return {**out, "times": times.tolist()} if with_times else out
 
-        Returns:
-            Dict with spectral features
-        """
-        self._debug_print("Extracting spectral features", "PROCESS")
-
-        # Spectral centroid (brightness)
-        self._debug_print("Computing spectral centroid...")
-        centroid = librosa.feature.spectral_centroid(
-            y=audio, sr=sr, hop_length=self.hop_length
-        )[0]
-
-        # Spectral rolloff
-        self._debug_print("Computing spectral rolloff...")
-        rolloff = librosa.feature.spectral_rolloff(
-            y=audio, sr=sr, hop_length=self.hop_length
-        )[0]
-
-        # Spectral bandwidth
-        self._debug_print("Computing spectral bandwidth...")
-        bandwidth = librosa.feature.spectral_bandwidth(
-            y=audio, sr=sr, hop_length=self.hop_length
-        )[0]
-
-        # Zero crossing rate
-        self._debug_print("Computing zero crossing rate...")
-        zcr = librosa.feature.zero_crossing_rate(
-            audio, frame_length=self.frame_length, hop_length=self.hop_length
-        )[0]
-
-        times = librosa.frames_to_time(
-            np.arange(len(centroid)), sr=sr, hop_length=self.hop_length
-        )
-
-        result = {
-            "spectral_centroid": {
-                "values": centroid.tolist(),
-                "times": times.tolist(),
-                "mean": float(np.mean(centroid)),
-                "std": float(np.std(centroid)),
-            },
-            "spectral_rolloff": {
-                "values": rolloff.tolist(),
-                "mean": float(np.mean(rolloff)),
-                "std": float(np.std(rolloff)),
-            },
-            "spectral_bandwidth": {
-                "values": bandwidth.tolist(),
-                "mean": float(np.mean(bandwidth)),
-                "std": float(np.std(bandwidth)),
-            },
-            "zero_crossing_rate": {
-                "values": zcr.tolist(),
-                "mean": float(np.mean(zcr)),
-                "std": float(np.std(zcr)),
-            },
+        return {
+            "spectral_centroid": summary(centroid, with_times=True),
+            "spectral_rolloff": summary(rolloff),
+            "spectral_bandwidth": summary(bandwidth),
+            "zero_crossing_rate": summary(zcr),
         }
-
-        self._debug_print(
-            f"Spectral centroid: mean={result['spectral_centroid']['mean']:.1f}Hz"
-        )
-        self._debug_print(
-            f"Spectral rolloff: mean={result['spectral_rolloff']['mean']:.1f}Hz"
-        )
-        self._debug_print(
-            f"Spectral bandwidth: mean={result['spectral_bandwidth']['mean']:.1f}Hz"
-        )
-        self._debug_print(
-            f"Zero crossing rate: mean={result['zero_crossing_rate']['mean']:.4f}"
-        )
-
-        return result
 
     def process_audio(
         self,
@@ -554,61 +315,41 @@ class AudioProcessor:
         extract_pitch: bool = True,
         extract_volume: bool = True,
         extract_spectral: bool = True,
-        reduce_noise: bool = True,
+        clean: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Process WAV file and return comprehensive analysis results.
+        """Load, clean and analyse a WAV file.
 
         Args:
-            filepath: Path to WAV file
-            detect_segments: Whether to detect sound/silence segments
-            extract_pitch: Whether to extract pitch (fundamental frequency)
-            extract_volume: Whether to extract volume envelope
-            extract_spectral: Whether to extract spectral features
-            reduce_noise: Whether to suppress background noise (see
-                ``reduce_noise()``) before running any of the above, so
-                every downstream feature reads from a cleaner signal
+            filepath: Path to the WAV file
+            detect_segments: Find the stretches with sound (silence statistics)
+            extract_pitch: Track pitch and loudness per frame (needed for notes)
+            extract_volume: RMS envelope
+            extract_spectral: Spectral features
+            clean: Run ``filter_audio`` first, so every feature reads the cleaned signal
 
-        Returns:
-            Dict with processing results in a consistent structure
+        Raises:
+            AudioInputError: the file can't be used (see ``intake.inspect_wav``)
         """
-        if self.debug:
-            console_print(f"{'=' * 60}")
-            console_print(f"PROCESSING AUDIO: {filepath}")
-            console_print(f"{'=' * 60}")
-        total_start = time.time()
+        started = time.time()
+        raw, sr = self.load_wav(filepath)
+        warnings = _input_warnings(raw)
+        audio = self.filter_audio(raw, sr) if clean else raw
+        self.audio, self.sr = audio, sr
 
-        # Load audio
-        load_start = time.time()
-        audio, sr = self.load_wav(filepath)
-        info = self.get_audio_info(filepath)
-
-        # Strip background noise first so segment detection, pitch tracking,
-        # and the volume/spectral features all read from the same clean
-        # signal instead of each having to be separately noise-tolerant.
-        if reduce_noise:
-            audio = self.reduce_noise(audio, sr)
-
-        self.audio = audio
-        self.sr = sr
-        self._debug_print(f"Load + info took {time.time() - load_start:.3f}s")
-
-        # Basic analysis
         duration = len(audio) / sr
-        rms_energy: float = np.sqrt(np.mean(audio**2))
-        max_amplitude: float = np.max(np.abs(audio))
-
-        # Build results dictionary with consistent structure
-        results = {
+        raw_rms = float(np.sqrt(np.mean(raw**2)))
+        results: Dict[str, Any] = {
             "file": {
                 "path": filepath,
                 "duration": float(duration),
                 "sample_rate": sr,
                 "num_samples": len(audio),
-                "rms_energy": float(rms_energy),
-                "max_amplitude": float(max_amplitude),
-                "is_silent": rms_energy < 0.001,
-                "info": info,
+                # measured on the recording as it arrived: normalizing would make silence look loud
+                "rms_energy": raw_rms,
+                "max_amplitude": float(np.max(np.abs(raw))),
+                "is_silent": raw_rms < SILENT_RMS,
+                "info": self.get_audio_info(filepath),
+                "warnings": warnings,
             },
             "segments": [],
             "pitch": {},
@@ -617,351 +358,193 @@ class AudioProcessor:
             "processing_time": 0.0,
         }
 
-        self._debug_print(
-            f"Basic stats: duration={duration:.2f}s, RMS={rms_energy:.6f}, max_amp={max_amplitude:.4f}, silent={results['file']['is_silent']}"
-        )
-
-        # Detect sound segments (onset/offset)
         if detect_segments:
-            seg_start = time.time()
             segments = self.detect_sound_segments(audio, sr)
-            total_sound_duration = sum(s["duration"] for s in segments)
+            sound = sum(s["duration"] for s in segments)
             results["segments"] = segments
-            results["file"]["total_sound_duration"] = float(total_sound_duration)
-            results["file"]["silence_ratio"] = (
-                float(1.0 - total_sound_duration / duration) if duration > 0 else 1.0
-            )
+            results["file"]["total_sound_duration"] = float(sound)
+            results["file"]["silence_ratio"] = float(1.0 - sound / duration) if duration > 0 else 1.0
             results["file"]["num_segments"] = len(segments)
-            self._debug_print(f"Segment detection took {time.time() - seg_start:.3f}s")
-
-        # Extract pitch
         if extract_pitch:
-            pitch_start = time.time()
-            pitch_data = self.extract_pitch(audio, sr)
-            results["pitch"] = pitch_data
-            self._debug_print(f"Pitch extraction took {time.time() - pitch_start:.3f}s")
-
-        # Extract volume envelope
+            results["pitch"] = self.extract_pitch(audio, sr)
         if extract_volume:
-            vol_start = time.time()
-            volume_data = self.extract_volume_envelope(audio, sr)
-            results["volume"] = volume_data
-            self._debug_print(f"Volume extraction took {time.time() - vol_start:.3f}s")
-
-        # Extract spectral features
+            results["volume"] = self.extract_volume_envelope(audio, sr)
         if extract_spectral:
-            spec_start = time.time()
-            spectral_data = self.extract_spectral_features(audio, sr)
-            results["spectral"] = spectral_data
-            self._debug_print(
-                f"Spectral extraction took {time.time() - spec_start:.3f}s"
-            )
+            results["spectral"] = self.extract_spectral_features(audio, sr)
 
-        total_time = time.time() - total_start
-        results["processing_time"] = round(total_time, 3)
-
-        if self.debug:
-            console_print(f"{'=' * 60}")
-            console_print(f"TOTAL PROCESSING TIME: {total_time:.3f}s")
-            console_print(f"{'=' * 60}")
-
-        logger.info(
-            f"Processed audio: {filepath} ({duration:.2f}s, {sr}Hz, RMS: {rms_energy:.4f})"
-        )
+        results["processing_time"] = round(time.time() - started, 3)
+        logger.info("Processed audio: %s (%.2fs, %dHz, RMS %.4f)", filepath, duration, sr, raw_rms)
         return results
 
 
 # =============================================================================
-# PUBLIC API FUNCTIONS
+# From analysis to notes
 # =============================================================================
 
-
 _PITCH_CLASS_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-_MAJOR_PROFILE = np.array(
-    [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-)
-_MINOR_PROFILE = np.array(
-    [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
-)
+# Krumhansl-Kessler key profiles
+_MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+_MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 
 
-def _estimate_key_and_mode(audio: np.ndarray, sr: int) -> tuple[str, str]:
-    """Estimate the tonic and mode from a chroma profile."""
-    if audio.size == 0 or np.allclose(audio, 0):
+def _best_key(profile: np.ndarray) -> tuple[str, str]:
+    """Krumhansl-Schmuckler: the key whose profile correlates best with this pitch-class profile."""
+    if not np.any(profile) or np.allclose(profile, profile[0]):
         return "C", "major"
-
-    profile = np.mean(librosa.feature.chroma_cqt(y=audio, sr=sr), axis=1)
-    if not np.any(profile):
-        return "C", "major"
-
     candidates = [
-        (float(np.dot(profile, np.roll(template, tonic))), tonic, mode)
+        (float(np.corrcoef(profile, np.roll(template, tonic))[0, 1]), tonic, mode)
         for template, mode in ((_MAJOR_PROFILE, "major"), (_MINOR_PROFILE, "minor"))
         for tonic in range(12)
     ]
-    _, tonic, mode = max(candidates, key=lambda candidate: candidate[0])
+    _, tonic, mode = max(candidates)
     return _PITCH_CLASS_NAMES[tonic], mode
 
 
+def _estimate_key_and_mode(audio: np.ndarray, sr: int) -> tuple[str, str]:
+    """Key and mode from the audio's chroma. Only a fallback: the notes are a cleaner signal."""
+    if audio.size == 0 or np.allclose(audio, 0):
+        return "C", "major"
+    return _best_key(np.mean(librosa.feature.chroma_cqt(y=audio, sr=sr), axis=1))
+
+
+def _key_from_melody(melody: List[Dict[str, float]]) -> tuple[str, str]:
+    """Key and mode from the notes, each weighted by how long it's held."""
+    profile = np.zeros(12)
+    for note in melody:
+        profile[int(round(note["hz"])) % 12] += note["duration"]
+    return _best_key(profile)
+
+
 def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
-    """Estimate tempo in BPM, returning 0.0 when it cannot be determined."""
+    """librosa's beat-tracker tempo in BPM, or 0.0. Needs percussive attacks, so it rarely works
+    on a hum; ``estimate_tempo_from_onsets`` is tried first."""
     if audio.size == 0 or np.allclose(audio, 0):
         return 0.0
     try:
         tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
         tempo_arr = np.asarray(tempo).reshape(-1)
-        if tempo_arr.size == 0:
-            return 0.0
-        return round(float(tempo_arr[0]), 2)
+        return round(float(tempo_arr[0]), 2) if tempo_arr.size else 0.0
     except Exception:
         return 0.0
 
 
-MIN_VOICED_RATIO = 0.5  # a segment must be mostly confidently-pitched to count as a note
-MIN_NOTE_DURATION_SECONDS = 0.2  # shorter than this is noise, not a note
-MERGE_GAP_SECONDS = 0.12  # a hummer's brief breath/pause shouldn't split one note in two
-
-
-# ---------------------------------------------------------------------------
-# Shared note-building core.
-#
-# extract_notes() (the standalone debug/test tool) and _build_melody() (the
-# actual production path behind /talk/notes and /talk/song, which feeds the
-# accompanist package) used to have independently written, and independently
-# drifting, versions of this logic — _build_melody was missing both the
-# minimum-duration filter and the pause-merging extract_notes had. Since
-# _build_melody is what accompanist actually receives, that gap meant fixes
-# made to one never reached the real pipeline. Both now call these same
-# functions, so there is exactly one place that decides what counts as a note.
-# ---------------------------------------------------------------------------
-
-
-def _notes_from_segments(
-    segments: List[Dict[str, float]],
-    pitch_times: np.ndarray,
-    pitch_freqs: np.ndarray,
-    pitch_voiced: np.ndarray,
-    min_voiced_ratio: float = MIN_VOICED_RATIO,
-) -> List[Dict[str, float]]:
-    """Turn detected sound segments into raw note candidates.
-
-    A loud segment isn't necessarily a sung note — a mic pop, breath catch,
-    or attack transient can be loud enough for `detect_sound_segments` to
-    flag it, without actually being pitched. Each segment is judged on its
-    own acoustic evidence: it only becomes a candidate note if most of its
-    frames are confidently voiced/pitched by PYIN, not just loud — regardless
-    of where in the recording it falls.
-
-    Deliberately does *not* filter by duration or merge yet: that happens
-    afterward, so a hummer's brief pause splitting one note into two short
-    fragments doesn't cause both to be discarded as "too short" before they
-    get a chance to be merged back into one real note.
-
-    Returns dicts with: start, end, duration, pitch_hz (all in seconds/Hz).
-    """
-    candidates = []
-    for seg in segments:
-        seg_start, seg_end = float(seg["start"]), float(seg["end"])
-        in_segment = (pitch_times >= seg_start) & (pitch_times <= seg_end)
-        total_frames = int(np.sum(in_segment))
-        voiced_frames = int(np.sum(in_segment & pitch_voiced))
-        if total_frames == 0 or voiced_frames / total_frames < min_voiced_ratio:
-            continue  # mostly unpitched: a pop/breath/noise burst, not a note
-
-        seg_pitches = pitch_freqs[in_segment & pitch_voiced]
-        seg_pitches = seg_pitches[np.isfinite(seg_pitches) & (seg_pitches > 0)]
-        if not seg_pitches.size:
-            continue
-
-        candidates.append(
-            {
-                "start": seg_start,
-                "end": seg_end,
-                "duration": seg_end - seg_start,
-                "pitch_hz": float(np.median(seg_pitches)),
-            }
-        )
-    return candidates
-
-
-MAX_MERGE_SEMITONES = 0.5  # notes must be within a semitone to be "the same note"
-
-
-def _semitone_distance(freq_a: float, freq_b: float) -> float:
-    """Musical distance between two frequencies, in semitones. Using a
-    log-frequency (semitone) distance instead of a flat Hz threshold matters
-    because a semitone is only ~6Hz wide around 100Hz but ~26Hz wide around
-    440Hz — a fixed Hz cutoff either merges genuinely different adjacent
-    notes in the vocal register or fails to merge the same wavering note an
-    octave down."""
-    if freq_a <= 0 or freq_b <= 0:
-        return float("inf")
-    return abs(12.0 * np.log2(freq_b / freq_a))
-
-
-def _merge_close_notes(
-    notes: List[Dict[str, float]], merge_gap: float = MERGE_GAP_SECONDS
-) -> List[Dict[str, float]]:
-    """Merge consecutive notes separated by a brief pause (a hummer catching
-    their breath mid-note) into one, provided they're close enough in pitch
-    to plausibly be the same intended note — within half a semitone, not
-    just "close in Hz" (see ``_semitone_distance``). Mutates nothing; returns
-    a new list of shallow-copied note dicts."""
-    if merge_gap <= 0 or len(notes) < 2:
-        return [dict(n) for n in notes]
-
-    merged = [dict(notes[0])]
-    for nxt in notes[1:]:
-        cur = merged[-1]
-        gap = nxt["start"] - cur["end"]
-        same_pitch = _semitone_distance(cur["pitch_hz"], nxt["pitch_hz"]) < MAX_MERGE_SEMITONES
-        if gap < merge_gap and same_pitch:
-            cur["end"] = nxt["end"]
-            cur["duration"] = cur["end"] - cur["start"]
-            cur["pitch_hz"] = (cur["pitch_hz"] + nxt["pitch_hz"]) / 2
-            if "volume" in cur and "volume" in nxt:
-                cur["volume"] = (cur["volume"] + nxt["volume"]) / 2
-        else:
-            merged.append(dict(nxt))
-    return merged
-
-
-def _drop_short_notes(
-    notes: List[Dict[str, float]], min_duration: float = MIN_NOTE_DURATION_SECONDS
-) -> List[Dict[str, float]]:
-    """Drop anything shorter than min_duration: too brief to be a deliberate
-    note, more likely a stray blip. Applied after merging, so a note a brief
-    pause split into two short fragments is judged by its merged length."""
-    return [n for n in notes if n["duration"] >= min_duration]
-
-
-def _build_melody(
-    analysis: Dict[str, Any],
-    min_voiced_ratio: float = MIN_VOICED_RATIO,
-    merge_gap: float = MERGE_GAP_SECONDS,
-    min_note_duration: float = MIN_NOTE_DURATION_SECONDS,
-) -> List[Dict[str, float]]:
-    """Convert detected sound segments into the MIDI-note API melody format.
-
-    Args:
-        analysis: The ``process_audio`` result.
-        min_voiced_ratio: Minimum fraction of a segment's frames that must be
-            voiced for it to count as a real note (0 disables the filter).
-        merge_gap: Merge notes of similar pitch separated by less than this
-            gap (seconds) — a hummer's brief pause shouldn't fragment one
-            note into two (0 disables merging).
-        min_note_duration: Notes shorter than this (seconds), after merging,
-            are dropped as noise rather than deliberate notes.
-    """
-    pitch = analysis.get("pitch", {})
-    if not isinstance(pitch, dict):
-        return []
+def _pitch_track(pitch: Dict[str, Any]):
+    """times, fractional MIDI, sounding-frame mask and loudness (or None) from ``extract_pitch``."""
     times = np.asarray(pitch.get("times", []), dtype=float)
-    frequencies = np.asarray(pitch.get("frequencies", []), dtype=float)
+    hz = np.asarray(pitch.get("frequencies", []), dtype=float)
     voiced = np.asarray(pitch.get("voiced_flag", []), dtype=bool)
+    frames = min(len(times), len(hz), len(voiced))
+    times, hz, voiced = times[:frames], hz[:frames], voiced[:frames]
+    rms_db = pitch.get("rms_db")
+    rms_db = np.asarray(rms_db, dtype=float)[:frames] if rms_db is not None and len(rms_db) >= frames else None
 
-    notes = _notes_from_segments(
-        analysis.get("segments", []), times, frequencies, voiced, min_voiced_ratio
-    )
-    notes = _merge_close_notes(notes, merge_gap)
-    notes = _drop_short_notes(notes, min_note_duration)
-
-    return [
-        {
-            # The accompaniment API historically calls this field ``hz``,
-            # but its public contract uses MIDI note numbers (60 = C4).
-            "hz": round(float(librosa.hz_to_midi(n["pitch_hz"])), 2),
-            "start": round(n["start"], 3),
-            "duration": round(n["duration"], 3),
-        }
-        for n in notes
-    ]
+    midi = np.full(frames, np.nan)
+    pitched = np.isfinite(hz) & (hz > 0)
+    midi[pitched] = librosa.hz_to_midi(hz[pitched])
+    active = voiced & pitched
+    return times, midi, active, rms_db
 
 
-# Public alias: the API contract routes import, keeping ``_build_melody`` as the
-# internal name the tests already exercise directly.
+def _notes_from_pitch(pitch: Dict[str, Any], settings: NoteSettings = DEFAULT_SETTINGS):
+    """(notes, tuning offset in semitones, share of the sound that was unpitched)."""
+    if not isinstance(pitch, dict):
+        return [], 0.0, 0.0
+    times, midi, active, rms_db = _pitch_track(pitch)
+    unpitched_share = 0.0
+    if rms_db is not None and rms_db.size:
+        loud = rms_db >= noise_gate(rms_db, settings)
+        unpitched_share = float(np.mean(~active[loud])) if loud.any() else 0.0
+        active = active & loud
+    notes = segment_notes(times, midi, active, rms_db, settings)
+    tuning = estimate_tuning(notes, settings)
+    for note in notes:
+        note["midi"] -= tuning
+    return notes, tuning, unpitched_share
+
+
+def _build_melody(analysis: Dict[str, Any], settings: NoteSettings = DEFAULT_SETTINGS) -> List[Dict[str, float]]:
+    """The notes of a ``process_audio`` result as {hz, start, duration}, times in seconds.
+
+    ``hz`` holds a (fractional, tuning-corrected) MIDI note number, e.g. 60.0 for middle C: the
+    field name is the accompaniment API's historical one. See ``app.audio.handoff`` for beats.
+    """
+    notes, _, _ = _notes_from_pitch(analysis.get("pitch", {}), settings)
+    return [{"hz": round(n["midi"], 2), "start": round(n["start"], 3), "duration": round(n["duration"], 3)} for n in notes]
+
+
+# Public name for routes; tests use ``_build_melody``.
 build_melody = _build_melody
+
+
+def _input_warnings(audio: np.ndarray) -> List[str]:
+    """Problems with the recording itself that may cost notes, in words for the user."""
+    warnings = []
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if audio.size and np.mean(np.abs(audio) >= CLIPPED_LEVEL) > CLIPPED_SHARE:
+        warnings.append("The recording is clipping (too loud or too close to the mic), so some notes may be misheard.")
+    elif 0 < peak < QUIET_PEAK:
+        warnings.append("The recording is very quiet. Hum a little closer to the mic.")
+    return warnings
 
 
 def analyze_audio_file(
     filepath: str,
     target_sr: int = 22050,
-    detect_segments: bool = True,
-    extract_pitch: bool = True,
-    extract_volume: bool = True,
-    extract_spectral: bool = True,
+    settings: NoteSettings = DEFAULT_SETTINGS,
+    keep_analysis: bool = False,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Analyze a WAV file and return melody, key, mode, and tempo.
-
-    The returned payload is JSON-ready and has this shape::
+    """The hum's notes, tempo and key, JSON-ready::
 
         {
-            "melody": [{"hz": float, "start": float, "duration": float}],
-            "key": "C",
-            "mode": "major",
-            "tempo": 100.0,
+            "melody": [{"hz": 60.0, "start": 0.0, "duration": 0.5}],  # MIDI note; seconds
+            "key": "C", "mode": "major",
+            "tempo": 100.0,        # 0.0 when it can't be measured
+            "tuning_cents": -12,   # how far off A440 the hum was (already corrected in hz)
+            "warnings": [...],     # problems with the recording, in words for the user
+            "analysis": {...},     # the full process_audio result, only with keep_analysis
         }
 
-    ``hz`` follows the accompaniment API's established convention: it contains
-    a MIDI note number (for example, 60 for middle C). Silence and unpitched
-    segments are omitted from ``melody``.
+    Raises:
+        AudioInputError: the file can't be used
     """
     processor = AudioProcessor(target_sr=target_sr, debug=debug)
-    analysis = processor.process_audio(
-        filepath=filepath,
-        detect_segments=detect_segments,
-        extract_pitch=extract_pitch,
-        extract_volume=extract_volume,
-        extract_spectral=extract_spectral,
-    )
-    # Reuse audio already loaded by process_audio instead of loading twice
-    audio = processor.audio
-    sr = processor.sr
-    key, mode = _estimate_key_and_mode(audio, sr)
-    return {
-        "melody": _build_melody(analysis),
+    analysis = processor.process_audio(filepath, detect_segments=True, extract_pitch=True, extract_volume=False, extract_spectral=False)
+    notes, tuning, unpitched_share = _notes_from_pitch(analysis["pitch"], settings)
+    melody = [{"hz": round(n["midi"], 2), "start": round(n["start"], 3), "duration": round(n["duration"], 3)} for n in notes]
+
+    warnings = list(analysis["file"]["warnings"])
+    if not melody:
+        warnings.append("No clear notes were found. Try humming a little louder, one note at a time.")
+    elif unpitched_share > UNPITCHED_SHARE:
+        warnings.append("Much of the recording isn't a clear single tune (noise, talking, chords or music behind it?).")
+
+    tempo = estimate_tempo_from_onsets([n["start"] for n in melody]) or _estimate_tempo(processor.audio, processor.sr)
+    key, mode = _key_from_melody(melody) if melody else _estimate_key_and_mode(processor.audio, processor.sr)
+    result = {
+        "melody": melody,
         "key": key,
         "mode": mode,
-        "tempo": _estimate_tempo(audio, sr),
+        "tempo": tempo,
+        "tuning_cents": int(round(tuning * 100)),
+        "warnings": warnings,
     }
+    if keep_analysis:
+        result["analysis"] = analysis
+    return result
 
 
 def quick_analyze(filepath: str, target_sr: int = 22050) -> Dict[str, Any]:
-    """
-    Quick analysis with default settings (minimal output, no debug).
-
-    Args:
-        filepath: Path to WAV file
-        target_sr: Target sample rate
-
-    Returns:
-        Simplified dictionary with key metrics only
-    """
-    processor = AudioProcessor(target_sr=target_sr, debug=False)
-    full_result = processor.process_audio(
-        filepath=filepath,
-        detect_segments=True,
-        extract_pitch=True,
-        extract_volume=True,
-        extract_spectral=False,  # Skip spectral for speed
-    )
-
-    # Return simplified summary
+    """Headline numbers only: file facts, sound segments, pitch and volume summaries."""
+    full_result = AudioProcessor(target_sr=target_sr).process_audio(filepath, extract_spectral=False)
     return {
         "file": full_result["file"],
         "segments": full_result["segments"],
         "pitch_summary": {
-            "mean_hz": full_result["pitch"].get("mean_hz", 0),
-            "median_hz": full_result["pitch"].get("median_hz", 0),
-            "min_hz": full_result["pitch"].get("min_hz", 0),
-            "max_hz": full_result["pitch"].get("max_hz", 0),
-            "voiced_frames": full_result["pitch"].get("voiced_frames", 0),
+            key: full_result["pitch"].get(key, 0) for key in ("mean_hz", "median_hz", "min_hz", "max_hz", "voiced_frames")
         },
         "volume_summary": {
-            "mean_rms": full_result["volume"].get("mean_rms", 0),
-            "max_rms": full_result["volume"].get("max_rms", 0),
-            "dynamic_range_db": full_result["volume"].get("dynamic_range_db", 0),
+            key: full_result["volume"].get(key, 0) for key in ("mean_rms", "max_rms", "dynamic_range_db")
         },
         "processing_time": full_result["processing_time"],
     }
@@ -970,170 +553,80 @@ def quick_analyze(filepath: str, target_sr: int = 22050) -> Dict[str, Any]:
 def extract_notes(
     filepath: str,
     target_sr: int = 22050,
-    top_db: float = 30,
-    min_note_duration: float = MIN_NOTE_DURATION_SECONDS,
-    merge_gap: float = MERGE_GAP_SECONDS,
-    min_voiced_ratio: float = MIN_VOICED_RATIO,
+    min_note_duration: Optional[float] = None,
+    merge_gap: Optional[float] = None,
     debug: bool = False,
 ) -> list[dict[str, Any]]:
-    """
-    Extract individual notes from a WAV file.
+    """The notes of a WAV file with their loudness, for debugging and tests.
 
-    Each note contains: start, end, duration, volume (RMS), pitch_hz (median).
-    Shares its note-building core (``_notes_from_segments`` /
-    ``_merge_close_notes`` / ``_drop_short_notes``) with ``_build_melody``,
-    the production path behind /talk/notes and /talk/song, so this debug tool
-    and the actual pipeline feeding the accompanist package always agree on
-    what counts as a note.
+    Uses exactly the same note finding as ``analyze_audio_file`` (what the accompanist gets).
 
     Args:
-        filepath: Path to WAV file
-        target_sr: Target sample rate
-        top_db: Silence threshold for segment detection
-        min_note_duration: Notes shorter than this (seconds), after merging,
-            are dropped as noise rather than deliberate notes.
-        merge_gap: Merge notes of similar pitch separated by less than this
-            gap (seconds) — a hummer's brief pause shouldn't fragment one
-            note into two (0 disables merging).
-        min_voiced_ratio: Minimum fraction of a segment's frames that must be
-            confidently pitched for it to count as a real note, not just a
-            loud mic pop/breath/noise burst that happened to pass the
-            amplitude-based segment detector (0 disables the filter).
-        debug: Enable debug output
+        filepath: Path to the WAV file
+        target_sr: Sample rate to analyse at
+        min_note_duration: Shortest note in seconds (default NoteSettings.min_note_seconds)
+        merge_gap: Silences shorter than this (seconds) don't end a note
+            (default NoteSettings.bridge_gap_seconds)
+        debug: Print each note
 
     Returns:
-        List of note dicts with keys: start, end, duration, volume, pitch_hz
+        Dicts with start, end, duration, volume (mean RMS), pitch_hz and midi
     """
-    # Run full analysis
-    processor = AudioProcessor(target_sr=target_sr, debug=debug)
-    result = processor.process_audio(
-        filepath=filepath,
-        detect_segments=True,
-        extract_pitch=True,
-        extract_volume=True,
-        extract_spectral=False,
+    settings = DEFAULT_SETTINGS
+    if min_note_duration is not None:
+        settings = dataclasses.replace(settings, min_note_seconds=min_note_duration)
+    if merge_gap is not None:
+        settings = dataclasses.replace(settings, bridge_gap_seconds=merge_gap)
+
+    result = AudioProcessor(target_sr=target_sr, debug=debug).process_audio(
+        filepath, detect_segments=False, extract_pitch=True, extract_volume=False, extract_spectral=False
     )
+    pitch = result["pitch"]
+    notes, _, _ = _notes_from_pitch(pitch, settings)
+    times = np.asarray(pitch["times"])
+    loudness = 10 ** (np.asarray(pitch["rms_db"]) / 20)
 
-    segments = result.get("segments", [])
-    pitch_data = result.get("pitch", {})
-    volume_data = result.get("volume", {})
-
-    if not segments:
-        if debug:
-            console_print("No sound segments found", "WARNING")
-        return []
-
-    # Get pitch and volume time series
-    pitch_times = np.array(pitch_data.get("times", []))
-    pitch_freqs = np.array(pitch_data.get("frequencies", []))
-    pitch_voiced = np.array(pitch_data.get("voiced_flag", []))
-
-    vol_times = np.array(volume_data.get("times", []))
-    vol_rms = np.array(volume_data.get("rms_values", []))
-
-    notes = _notes_from_segments(
-        segments, pitch_times, pitch_freqs, pitch_voiced, min_voiced_ratio
-    )
-
-    # --- Volume: mean RMS within each candidate note, before merging ---
-    for note in notes:
-        vol_mask = (vol_times >= note["start"]) & (vol_times <= note["end"])
-        seg_volumes = vol_rms[vol_mask]
-        note["volume"] = float(np.mean(seg_volumes)) if seg_volumes.size else 0.0
-
-    # Merge across brief pauses first, *then* drop short notes — a pause that
-    # splits one note into two short fragments must be judged by the merged
-    # length, not have each half discarded before it gets a chance to rejoin.
-    notes = _merge_close_notes(notes, merge_gap)
-    notes = _drop_short_notes(notes, min_note_duration)
-
-    notes = [
-        {
-            "start": round(n["start"], 3),
-            "end": round(n["end"], 3),
-            "duration": round(n["duration"], 3),
-            "volume": round(n["volume"], 6),
-            "pitch_hz": round(n["pitch_hz"], 1),
-        }
-        for n in notes
-    ]
-
+    out = []
+    for n in notes:
+        inside = (times >= n["start"]) & (times < n["end"])
+        out.append(
+            {
+                "start": round(n["start"], 3),
+                "end": round(n["end"], 3),
+                "duration": round(n["duration"], 3),
+                "volume": round(float(np.mean(loudness[inside])) if inside.any() else 0.0, 6),
+                "pitch_hz": round(float(librosa.midi_to_hz(n["midi"])), 1),
+                "midi": round(n["midi"], 2),
+            }
+        )
     if debug:
-        console_print(f"Extracted {len(notes)} notes", "SUCCESS")
-        for i, n in enumerate(notes):
-            console_print(
-                f"  Note {i}: {n['start']:.2f}s-{n['end']:.2f}s "
-                f"dur={n['duration']:.2f}s vol={n['volume']:.4f} pitch={n['pitch_hz']:.1f}Hz"
-            )
-    return notes
+        console_print(f"Extracted {len(out)} notes", "SUCCESS")
+        for i, n in enumerate(out):
+            console_print(f"  Note {i}: {n['start']:.2f}s-{n['end']:.2f}s midi={n['midi']:.2f} ({n['pitch_hz']:.1f}Hz)")
+    return out
 
 
-def clean_wav(
-    filepath: str,
-    output_path: Optional[str] = None,
-    target_sr: int = 22050,
-    fmin: float = 80.0,
-    fmax: float = 1200.0,
-    top_db: float = 30.0,
-    debug: bool = False,
-) -> str:
-    """
-    Filter a WAV file into a cleaner version so its notes are easier to read.
-
-    Bandpass-filters out rumble/hiss outside the note range, trims silence
-    from the edges, and peak-normalizes the audio, then writes the result
-    to ``output_path`` (defaults to ``<name>_clean.wav`` next to the input).
-
-    Args:
-        filepath: Path to the input WAV file
-        output_path: Where to write the cleaned WAV (optional)
-        target_sr: Sample rate to process/write at
-        fmin: Lower cutoff frequency in Hz
-        fmax: Upper cutoff frequency in Hz
-        top_db: Silence threshold (dB) used when trimming edges
-        debug: Enable debug output
-
-    Returns:
-        Path to the cleaned WAV file
-    """
+def clean_wav(filepath: str, output_path: Optional[str] = None, target_sr: int = 22050, debug: bool = False) -> str:
+    """Write the cleaned recording (``filter_audio``: same length, so times still line up) as a
+    16-bit mono WAV, to ``output_path`` or ``<name>_clean.wav`` next to the input."""
     processor = AudioProcessor(target_sr=target_sr, debug=debug)
     audio, sr = processor.load_wav(filepath)
-    cleaned = processor.clean_audio(audio, sr, fmin=fmin, fmax=fmax, top_db=top_db)
-
+    cleaned = processor.filter_audio(audio, sr)
     if output_path is None:
         base, ext = os.path.splitext(filepath)
         output_path = f"{base}_clean{ext or '.wav'}"
-
-    sf.write(output_path, cleaned, sr)
-
-    if debug:
-        console_print(f"Wrote cleaned WAV to: {output_path}", "SUCCESS")
+    sf.write(output_path, cleaned, sr, subtype="PCM_16")
     return output_path
 
 
-# Backward compatibility
-def load_and_process_wav(
-    filepath: str, target_sr: int = 22050, debug: bool = False, **kwargs
-) -> Dict[str, Any]:
-    """Backward compatibility wrapper."""
+def load_and_process_wav(filepath: str, target_sr: int = 22050, debug: bool = False, **kwargs) -> Dict[str, Any]:
+    """Backward compatibility wrapper for ``analyze_audio_file``."""
     return analyze_audio_file(filepath, target_sr, debug=debug, **kwargs)
 
 
-# Standalone test function
-def test_audio_processor(filepath: str) -> Dict[str, Any]:
-    """Test function to verify the processor works."""
-    console_print(f"Testing audio processor with: {filepath}", "PROCESS")
-    result = analyze_audio_file(filepath, debug=True)
-    console_print("Test completed successfully!", "SUCCESS")
-    return result
-
-
 if __name__ == "__main__":
-    # Allow running as script: python -m backend.src.app.audio.processor <file.wav>
+    # python -m app.audio.processor <file.wav>   (from backend/src)
     if len(sys.argv) > 1:
-        test_audio_processor(sys.argv[1])
+        print(analyze_audio_file(sys.argv[1], debug=True))
     else:
-        console_print(
-            "Usage: python -m backend.src.app.audio.processor <path_to_wav_file>",
-            "INFO",
-        )
+        console_print("Usage: python -m app.audio.processor <path_to_wav_file>")

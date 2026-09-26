@@ -20,7 +20,7 @@ from app.__init__ import create_app  # noqa: E402
 @pytest.fixture
 def app(tmp_path):
     app = create_app("testing")
-    app.config.update(TESTING=True, UPLOAD_FOLDER=str(tmp_path))
+    app.config.update(TESTING=True, UPLOAD_FOLDER=str(tmp_path), RECORDINGS_FOLDER=str(tmp_path / "recordings"))
     return app
 
 
