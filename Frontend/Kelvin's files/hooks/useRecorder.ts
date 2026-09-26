@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { encodeWav } from '../audio/encodeWav'
 
 /** Longest hum we record. Recording stops on its own at this point. */
 export const MAX_RECORDING_MS = 10_000
@@ -17,8 +16,8 @@ export interface Recorder {
   pressProgress: number
   /** The live mic while recording, for level metering. */
   stream: MediaStream | null
-  /** The finished recording as a WAV file, ready to send to the backend. */
-  audio: Blob | null
+  /** The finished recording, in the browser's own format (webm in Chrome, mp4 in Safari). */
+  recording: Blob | null
   problem: MicProblem | null
   start: () => void
   stop: () => void
@@ -33,7 +32,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
   const [elapsedMs, setElapsedMs] = useState(0)
   const [pressProgress, setPressProgress] = useState(0)
   const [stream, setStream] = useState<MediaStream | null>(null)
-  const [audio, setAudio] = useState<Blob | null>(null)
+  const [recording, setRecording] = useState<Blob | null>(null)
   const [problem, setProblem] = useState<MicProblem | null>(null)
 
   const phaseRef = useRef<RecorderPhase>('idle')
@@ -84,7 +83,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
     }
 
     cancelAnimationFrame(frameRef.current)
-    setAudio(null)
+    setRecording(null)
     setElapsedMs(0)
     setPressProgress(0)
     setProblem(null)
@@ -114,9 +113,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
     recorder.onstop = () => {
       micStream.getTracks().forEach((track) => track.stop())
       setStream(null)
-      encodeWav(new Blob(chunks, { type: recorder.mimeType })).then(setAudio, (error: unknown) =>
-        console.error('Could not convert the recording to WAV', error),
-      )
+      setRecording(new Blob(chunks, { type: recorder.mimeType }))
     }
     recorder.start()
     recorderRef.current = recorder
@@ -147,7 +144,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
     [],
   )
 
-  return { phase, elapsedMs, pressProgress, stream, audio, problem, start, stop }
+  return { phase, elapsedMs, pressProgress, stream, recording, problem, start, stop }
 }
 
 function classifyMicError(error: unknown): MicProblem {

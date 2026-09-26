@@ -1,13 +1,8 @@
 import type { CSSProperties } from 'react'
 import HomePage from './pages/HomePage'
+import woodPhoto from './assets/textures/MapleWood.avif'
 
-// The wood photo is optional: until assets/textures/wood-light.jpg exists this finds nothing,
-// and the table keeps its warm fallback color from wood-background.css.
-const woodTextureUrl = Object.values(
-  import.meta.glob<string>('./assets/textures/wood-light.jpg', { eager: true, query: '?url', import: 'default' }),
-)[0]
-
-const woodStyle = woodTextureUrl ? ({ '--wood-texture': `url("${woodTextureUrl}")` } as CSSProperties) : undefined
+const woodStyle = { '--wood-photo': `url("${woodPhoto}")` } as CSSProperties
 
 export default function App() {
   return (

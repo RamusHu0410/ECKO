@@ -1,15 +1,9 @@
 /*
- * The finished record. The grooves spin (vinyl-spin) while the reflections stay still
- * above them (vinyl-sheen); fixed light over a turning disc is what makes vinyl read as real.
+ * The finished record's reflections. The grooves turn underneath (useTurntable rotates the
+ * canvas) while this sheen stays still above them; fixed light over a turning disc is what
+ * makes vinyl read as real.
  */
 @layer components {
-  /* Turntable motor: ease into 33⅓ rpm, then keep turning at a steady speed */
-  .vinyl-spin {
-    animation:
-      vinyl-spin-up var(--duration-spin-up) var(--ease-motor-start) both,
-      vinyl-spin var(--duration-rotation) linear var(--duration-spin-up) infinite;
-  }
-
   /* Soft angled highlights, masked off the paper label and the outer lip */
   .vinyl-sheen {
     position: absolute;
@@ -48,29 +42,5 @@
 
   .vinyl-sheen[data-visible="true"] {
     opacity: 1;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .vinyl-spin {
-      animation: none;
-    }
-  }
-}
-
-@keyframes vinyl-spin-up {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(var(--spin-up-angle));
-  }
-}
-
-@keyframes vinyl-spin {
-  from {
-    transform: rotate(var(--spin-up-angle));
-  }
-  to {
-    transform: rotate(calc(var(--spin-up-angle) + 360deg));
   }
 }

@@ -1,123 +1,54 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import GlassPanel from '../GlassPanel/GlassPanel'
 import GlassButton from '../GlassButton/GlassButton'
+import GlassMessage from '../GlassMessage/GlassMessage'
 import DiscCanvas from './DiscCanvas'
-import { MAX_RECORDING_MS, useRecorder, type MicProblem, type RecorderPhase } from '../../hooks/useRecorder'
-import { LEVEL_SAMPLE_MS, useMicLevel } from '../../hooks/useMicLevel'
-import { readNumberToken, readPressMotion } from '../../design/readToken'
+import { ANNOUNCEMENTS, MIC_HELP, UPLOAD_FAILED_TITLE, UPLOAD_HELP, discLabel } from './discCopy'
+import { useRecordSession } from '../../hooks/useRecordSession'
+import { readPressMotion } from '../../design/readToken'
+import { appear } from '../../design/motion'
 
-const LEVELS_PER_RECORDING = MAX_RECORDING_MS / LEVEL_SAMPLE_MS
-
-const DISC_LABELS: Record<RecorderPhase, string> = {
-  idle: 'Start recording. Hum for up to 10 seconds.',
-  requesting: 'Waiting for microphone access',
-  recording: 'Stop recording',
-  pressing: 'Pressing your hum into a record',
-  done: 'Your record is ready',
-  error: 'Try recording again',
-}
-
-const ANNOUNCEMENTS: Partial<Record<RecorderPhase, string>> = {
-  recording: 'Recording. Hum now.',
-  pressing: 'Pressing your hum into a record.',
-  done: 'Your record is ready.',
-}
-
-const MIC_HELP: Record<MicProblem, { title: string; body: string }> = {
-  blocked: {
-    title: 'Your microphone is turned off for this page',
-    body: 'Click the icon at the left of the address bar and allow the microphone. On iPhone, open Settings › Safari › Microphone and choose Allow. Then try again.',
-  },
-  'no-microphone': {
-    title: 'No microphone found',
-    body: 'Plug in a microphone or headset, or check your sound settings, then try again.',
-  },
-  insecure: {
-    title: 'The microphone needs a secure page',
-    body: 'Open this page with an https:// address (or on localhost), then try again.',
-  },
-  unsupported: {
-    title: 'This browser can’t record audio',
-    body: 'Open the page in the latest Chrome or Safari and try again.',
-  },
-  unavailable: {
-    title: 'The microphone didn’t start',
-    body: 'Another app may be using it. Close that app, then try again.',
-  },
-}
-
-const APPEAR = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 } }
-
-interface RecordDiscProps {
-  /** Called once for each finished recording, as a WAV file. */
-  onRecorded: (audio: Blob) => void
-}
-
-/** The hero: a glass disc you tap to hum into, which presses itself into a spinning record. */
-export default function RecordDisc({ onRecorded }: RecordDiscProps) {
+/**
+ * The hero: a glass disc you tap to hum into. It presses itself into vinyl, turns slowly while
+ * the backend works, then spins at 33⅓ rpm (tap to pause). Returns three rows for the page grid:
+ * the disc, a screen-reader status line and the actions area below the disc.
+ */
+export default function RecordDisc() {
   const reducedMotion = useReducedMotion() ?? false
-  const pressDurationMs = useMemo(() => readNumberToken('--duration-press-vinyl'), [])
   const press = useMemo(readPressMotion, [])
-  const recorder = useRecorder(pressDurationMs)
-  const mic = useMicLevel(recorder.stream)
-  const { phase, problem } = recorder
-
-  const onRecordedRef = useRef(onRecorded)
-  useEffect(() => {
-    onRecordedRef.current = onRecorded
-  })
-  useEffect(() => {
-    if (recorder.audio) onRecordedRef.current(recorder.audio)
-  }, [recorder.audio])
-
-  const canTap = phase === 'idle' || phase === 'recording' || phase === 'error'
-  const isVinyl = phase === 'pressing' || phase === 'done'
-  const secondsLeft = Math.ceil((MAX_RECORDING_MS - recorder.elapsedMs) / 1000)
-
-  const beginRecording = () => {
-    mic.prime()
-    recorder.start()
-  }
-  const handleDiscTap = () => {
-    if (phase === 'recording') recorder.stop()
-    else if (canTap) beginRecording()
-  }
+  const session = useRecordSession(reducedMotion)
+  const { phase, micProblem, uploadFailure } = session
 
   return (
-    <div className="flex flex-col items-center">
+    <>
       <motion.button
         type="button"
-        aria-label={DISC_LABELS[phase]}
-        aria-disabled={!canTap}
+        aria-label={discLabel(phase, session.paused)}
+        aria-disabled={!session.canTap}
         className="relative size-(--size-disc) cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber aria-disabled:cursor-default"
-        onClick={handleDiscTap}
-        whileTap={canTap && !reducedMotion ? { scale: press.scale } : undefined}
+        onClick={session.tap}
+        whileTap={session.canTap && !reducedMotion ? { scale: press.scale } : undefined}
         transition={press.transition}
       >
-        <GlassPanel shape="disc" className="size-full">
-          <div className={`absolute inset-0 rounded-full ${phase === 'done' ? 'vinyl-spin' : ''}`}>
-            <DiscCanvas
-              fillProgress={recorder.elapsedMs / MAX_RECORDING_MS}
-              levels={mic.history}
-              levelsPerRecording={LEVELS_PER_RECORDING}
-              liveLevel={mic.level}
-              pressProgress={recorder.pressProgress}
-              reducedMotion={reducedMotion}
-            />
-          </div>
-          <span className="vinyl-sheen" data-visible={isVinyl} />
-          {!isVinyl && (
-            <span
-              className="absolute inset-x-0 top-[57%] flex items-center justify-center gap-1.5 text-sm tracking-wide text-ink-muted tabular-nums"
-              aria-hidden="true"
-            >
-              {phase === 'recording' && <span className="size-1.5 rounded-full bg-amber motion-safe:animate-pulse" />}
-              {phase === 'recording'
-                ? `0:${String(secondsLeft).padStart(2, '0')}`
-                : phase === 'requesting'
-                  ? 'Allow the microphone'
-                  : 'Tap and hum'}
+        <GlassPanel className="size-full">
+          <motion.div className="absolute inset-0 rounded-full" style={{ rotate: session.rotation }}>
+            <DiscCanvas {...session.canvas} reducedMotion={reducedMotion} />
+          </motion.div>
+          <span className="vinyl-sheen" data-visible={session.isVinyl} />
+          {!session.isVinyl && (
+            // a small frosted chip, nested glass on the clear disc, so the dark text stays readable
+            <span className="absolute inset-x-0 top-[57%] flex justify-center" aria-hidden="true">
+              <span className="glass-surface glass-control px-[1em] py-[0.35em] text-disc tracking-wide text-ink tabular-nums">
+                <span className="glass-content flex items-center gap-[0.5em]">
+                  {phase === 'recording' && <span className="size-[0.45em] rounded-full bg-amber motion-safe:animate-pulse" />}
+                  {phase === 'recording'
+                    ? `0:${String(session.secondsLeft).padStart(2, '0')}`
+                    : phase === 'requesting'
+                      ? 'Allow the microphone'
+                      : 'Tap and hum'}
+                </span>
+              </span>
             </span>
           )}
         </GlassPanel>
@@ -127,24 +58,45 @@ export default function RecordDisc({ onRecorded }: RecordDiscProps) {
         {ANNOUNCEMENTS[phase] ?? ''}
       </p>
 
-      <AnimatePresence mode="wait">
-        {phase === 'done' && (
-          <GlassButton key="rerecord" variant="action" className="mt-8" onClick={beginRecording} {...APPEAR}>
-            Re-record
-          </GlassButton>
-        )}
-        {phase === 'error' && problem && (
-          <motion.div key="mic-help" role="alert" className="glass-surface glass-message mt-8 max-w-sm px-6 py-5" {...APPEAR}>
-            <div className="glass-content flex flex-col items-center gap-2 text-center">
-              <p className="font-medium text-ink">{MIC_HELP[problem].title}</p>
-              <p className="text-sm leading-relaxed text-ink-muted">{MIC_HELP[problem].body}</p>
-              <GlassButton variant="action" className="mt-3" onClick={beginRecording}>
-                Try again
-              </GlassButton>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+      <div className="flex min-h-24 flex-col items-center self-start pt-[clamp(1rem,3vh,2rem)]">
+        <AnimatePresence mode="wait">
+          {phase === 'waiting' && (
+            <motion.p key="waiting" className="glass-surface glass-control px-5 py-2 text-sm text-ink" {...appear}>
+              <span className="glass-content flex items-center gap-2">
+                <span className="size-1.5 rounded-full bg-amber motion-safe:animate-pulse" />
+                Pressing your record…
+              </span>
+            </motion.p>
+          )}
+          {phase === 'ready' && (
+            <GlassButton key="rerecord" onClick={session.record} {...appear}>
+              Re-record
+            </GlassButton>
+          )}
+          {phase === 'failed' && uploadFailure && (
+            <GlassMessage
+              key="upload-failed"
+              title={UPLOAD_FAILED_TITLE}
+              body={UPLOAD_HELP[uploadFailure.kind].body}
+              detail={UPLOAD_HELP[uploadFailure.kind].showDetail ? uploadFailure.message : undefined}
+              actions={
+                <>
+                  <GlassButton onClick={session.retry}>Try again</GlassButton>
+                  <GlassButton onClick={session.record}>Re-record</GlassButton>
+                </>
+              }
+            />
+          )}
+          {phase === 'mic-error' && micProblem && (
+            <GlassMessage
+              key="mic-help"
+              title={MIC_HELP[micProblem].title}
+              body={MIC_HELP[micProblem].body}
+              actions={<GlassButton onClick={session.record}>Try again</GlassButton>}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </>
   )
 }

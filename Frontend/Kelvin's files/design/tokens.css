@@ -14,41 +14,69 @@
   --color-ink-muted: #8a8074;
   --color-amber: #e8a94c;
 
-  /* Wood table */
-  --color-wood: #d9c3a2;
-  --color-vignette: rgba(62, 38, 18, 0.22);
-  --wood-tile-size: 1024px;
+  /* Text that sits straight on the wood (the title): warm off-white, since the table is dark */
+  --color-on-wood: #f2efe9;
 
-  /* Glass material */
-  --color-glass-fill: rgba(255, 255, 255, 0.14);
-  --color-glass-fill-hover: rgba(255, 255, 255, 0.2);
-  --color-glass-rim: rgba(255, 255, 255, 0.9);
-  --color-glass-rim-soft: rgba(255, 255, 255, 0.24);
-  --color-glass-specular: rgba(255, 255, 255, 0.36);
-  --color-glass-edge: rgba(88, 56, 26, 0.16);
-  --color-glass-selected: rgba(232, 169, 76, 0.3);
-  --color-glass-selected-rim: rgba(255, 232, 196, 0.95);
-  --blur-glass: 24px;
-  --saturate-glass: 160%;
-  --radius-panel: 32px;
-  --radius-message: 24px;
+  /* Wood table: the photo, multiplied by a warm brown so it reads as walnut and white glass
+     pops against it. --color-wood only shows while the photo loads. */
+  --color-wood: #6f4a2e;
+  --wood-shade: #8a7462;
+  --wood-contrast: 1.3; /* brings back the grain the darkening flattens */
+  --color-vignette: rgba(30, 16, 6, 0.4);
+
+  /*
+   * Glass material (glass.css). Every value can be tuned live in DevTools on :root.
+   */
+  /* Clear glass (the disc): the wood shows through, bent at the edges by the refraction */
+  --glass-tint: rgba(255, 255, 255, 0.1);
+  --glass-blur: 2px;
+  --glass-brightness: 1.12;
+  /* Frosted glass (buttons, pills, messages): enough haze that dark text stays readable */
+  --glass-tint-frosted: rgba(255, 255, 255, 0.4);
+  --glass-tint-frosted-hover: rgba(255, 255, 255, 0.5);
+  --glass-blur-frosted: 7px;
+  /* Glass inside glass gets a second, lighter layer of tint */
+  --glass-tint-nested: rgba(255, 255, 255, 0.16);
+  /* Lit rim: a gradient ring, bright where light catches the edge, nearly gone elsewhere */
+  --glass-rim-width: 1.5px;
+  --glass-rim-width-disc: 2.5px;
+  --glass-rim-bright: rgba(255, 255, 255, 0.95);
+  --glass-rim-dim: rgba(255, 255, 255, 0.06);
+  --glass-rim-fade-start: 30%; /* small elements: bright at top-left, dim from here… */
+  --glass-rim-fade-end: 70%; /* …until here, then bright again at bottom-right */
+  --glass-rim-disc-spread: 55deg; /* disc: how far each highlight (10 and 4 o'clock) fades around */
+  /* Thickness: bright inset line at the top, fainter at the bottom, and the disc's inner ring */
+  --glass-inset-top: rgba(255, 255, 255, 0.7);
+  --glass-inset-bottom: rgba(255, 255, 255, 0.22);
+  --glass-thickness-ring: rgba(255, 255, 255, 0.18);
+  --glass-thickness-inset: 8px;
+  /* Lift: one neutral shadow strength drives both shadows */
+  --glass-shadow-strength: 0.3;
+  --glass-shadow:
+    0 2px 6px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.2)),
+    0 22px 48px -18px rgba(0, 0, 0, var(--glass-shadow-strength)),
+    0 48px 96px -40px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.73));
+  --glass-shadow-small:
+    0 1px 2px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.2)),
+    0 10px 24px -12px rgba(0, 0, 0, calc(var(--glass-shadow-strength) * 0.93));
+  --radius-message: 28px;
   --radius-pill: 999px;
-  --shadow-glass:
-    0 1px 2px rgba(64, 40, 18, 0.08), 0 14px 28px -12px rgba(64, 40, 18, 0.22),
-    0 38px 76px -30px rgba(64, 40, 18, 0.34);
-  --shadow-glass-small: 0 1px 2px rgba(64, 40, 18, 0.1), 0 8px 18px -10px rgba(64, 40, 18, 0.3);
 
-  /* Liquid-glass refraction on hero surfaces (Chromium only): subtle, not wobbly */
-  --glass-displacement: 40;
-  --glass-aberration: 1.2;
+  /* Liquid-glass refraction on the disc (Chromium only): subtle, never tinting.
+     Read once when the disc appears, so reload after changing these three. */
+  --glass-displacement: 36;
+  --glass-aberration: 0.9;
   --glass-elasticity: 0.04;
 
-  /* Recording disc and vinyl */
-  --size-disc: clamp(248px, 78vw, 320px);
+  /* Recording disc: it is the whole experience, so it dominates the page */
+  --size-disc: clamp(340px, 62vmin, 620px);
+  --text-disc: max(13px, calc(var(--size-disc) * 0.034));
   --vinyl-label-size: 31%;
-  --color-disc-fill: rgba(255, 249, 238, 0.4);
-  --color-disc-ink: rgba(42, 36, 32, 0.64);
-  --color-disc-glow: rgba(255, 255, 255, 0.75);
+  --color-disc-fill: rgba(255, 255, 255, 0.62);
+  --color-disc-ink: rgba(42, 36, 32, 0.66);
+  --color-disc-glow: rgba(232, 169, 76, 0.6);
+
+  /* Vinyl */
   --color-vinyl: #121110;
   --color-vinyl-lip: #24211e;
   --color-vinyl-groove: rgba(255, 255, 255, 0.05);
@@ -57,16 +85,15 @@
   --color-sheen: rgba(255, 255, 255, 0.13);
   --color-sheen-soft: rgba(255, 255, 255, 0.1);
 
-  /* Motion */
+  /* Motion (durations in ms) */
   --spring-press-scale: 0.96;
   --spring-press-stiffness: 600;
   --spring-press-damping: 32;
   --duration-fade: 400ms;
   --duration-press-vinyl: 1200ms;
-  --duration-spin-up: 1s;
-  --duration-rotation: 1.8s; /* 33⅓ rpm */
-  /* Turntable motor: speed rises linearly, so the start curve is a quadratic ease-in.
-     It covers 180deg × spin-up ÷ rotation, which lands exactly on the steady speed. */
-  --ease-motor-start: cubic-bezier(0.333, 0, 0.667, 0.333);
-  --spin-up-angle: 100deg;
+  /* Turntable: one turn per 1800ms is 33⅓ rpm; while the server works it turns slowly */
+  --duration-rotation: 1800ms;
+  --duration-rotation-waiting: 7200ms;
+  --duration-spin-up: 1000ms;
+  --duration-spin-down: 1600ms;
 }

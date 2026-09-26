@@ -13,24 +13,22 @@ const supportsRefraction =
     ({ brand }) => brand === 'Chromium',
   ) ?? false
 
-/** liquid-glass-react blurs by a base of 4px plus blurAmount × 32px. */
-const LIBRARY_BASE_BLUR_PX = 4
-const LIBRARY_BLUR_STEP_PX = 32
-
 interface GlassPanelProps {
   children: ReactNode
-  /** "disc" makes a circle; children then fill it edge to edge. */
-  shape?: 'panel' | 'disc'
   className?: string
 }
 
-/** A large hero glass surface: refracting liquid glass in Chromium, layered CSS glass elsewhere. */
-export default function GlassPanel({ children, shape = 'panel', className = '' }: GlassPanelProps) {
+/**
+ * The large round hero glass the disc is made of: refracting liquid glass in Chromium,
+ * layered CSS glass elsewhere. Children fill it edge to edge.
+ */
+export default function GlassPanel({ children, className = '' }: GlassPanelProps) {
   const surfaceRef = useRef<HTMLDivElement>(null)
   const size = useElementSize(surfaceRef)
   const tuning = useMemo(readRefractionTuning, [])
 
-  // memoized so the refraction layer doesn't re-render when only the children change
+  // memoized so the refraction layer doesn't re-render when only the children change.
+  // Blur, brightness and saturation come from glass.css, which overrides the library's own.
   const refraction = useMemo(() => {
     if (!supportsRefraction || !size) return null
     return (
@@ -39,24 +37,23 @@ export default function GlassPanel({ children, shape = 'panel', className = '' }
           key={`${size.width}x${size.height}`}
           style={{ position: 'absolute', top: '50%', left: '50%' }}
           padding="0"
-          cornerRadius={shape === 'disc' ? size.width / 2 : tuning.panelRadius}
+          cornerRadius={size.width / 2}
           displacementScale={tuning.displacementScale}
-          blurAmount={tuning.blurAmount}
-          saturation={tuning.saturation}
           aberrationIntensity={tuning.aberrationIntensity}
           elasticity={tuning.elasticity}
+          mode="polar"
           mouseContainer={surfaceRef}
         >
           <div style={{ width: size.width, height: size.height }} />
         </LiquidGlass>
       </div>
     )
-  }, [size, shape, tuning])
+  }, [size, tuning])
 
   return (
     <div
       ref={surfaceRef}
-      className={`glass-surface ${shape === 'disc' ? 'glass-disc' : ''} ${className}`}
+      className={`glass-surface glass-disc ${className}`}
       data-refraction={refraction ? 'on' : undefined}
     >
       {refraction}
@@ -68,10 +65,7 @@ export default function GlassPanel({ children, shape = 'panel', className = '' }
 function readRefractionTuning() {
   return {
     displacementScale: readNumberToken('--glass-displacement'),
-    blurAmount: Math.max(0, (readNumberToken('--blur-glass') - LIBRARY_BASE_BLUR_PX) / LIBRARY_BLUR_STEP_PX),
-    saturation: readNumberToken('--saturate-glass'),
     aberrationIntensity: readNumberToken('--glass-aberration'),
     elasticity: readNumberToken('--glass-elasticity'),
-    panelRadius: readNumberToken('--radius-panel'),
   }
 }

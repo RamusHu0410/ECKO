@@ -1,26 +1,38 @@
 /*
- * The light wood tabletop. App.tsx sets --wood-texture when assets/textures/wood-light.jpg
- * exists; without it the table stays a warm neutral color (never a fake stripe pattern).
+ * The wooden tabletop. MapleWood.avif is a single photo, not a seamless tile, so it is shown
+ * once, covering the viewport, on a fixed layer (which also avoids iOS's broken
+ * background-attachment: fixed). App.tsx provides it as --wood-photo. The light maple is
+ * multiplied by --wood-shade so it reads as darker walnut, grain intact, and white glass pops.
  */
 @layer components {
   .wood-background {
     position: relative;
     z-index: 0;
     min-height: 100dvh;
-    background-color: var(--color-wood);
-    background-image: var(--wood-texture, none);
-    background-repeat: repeat;
-    background-size: var(--wood-tile-size) auto;
-    background-position: center top;
   }
 
-  /* Tabletop under a lamp: the edges fall off slightly darker */
   .wood-background::before {
     content: "";
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background: radial-gradient(ellipse 120% 90% at 50% 38%, transparent 52%, var(--color-vignette) 100%);
+    background-color: var(--color-wood);
+    background-image: linear-gradient(var(--wood-shade) 0 0), var(--wood-photo, none);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-blend-mode: multiply, normal;
+    filter: contrast(var(--wood-contrast));
+  }
+
+  /* Tabletop under a lamp: the edges fall off slightly darker */
+  .wood-background::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse 120% 90% at 50% 42%, transparent 50%, var(--color-vignette) 100%);
   }
 }
