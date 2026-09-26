@@ -54,7 +54,6 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
     if (recorder.recording) send(recorder.recording)
   }, [recorder.recording, send])
 
-<<<<<<< HEAD
   // the platter and the accompaniment play/pause together, once the WAV is ready
   const { status: accompanimentStatus, play: playAccompaniment, pause: pauseAccompaniment } = accompaniment
   useEffect(() => {
@@ -66,49 +65,31 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
   const { prime } = mic
   const { reset: resetUpload } = upload
   const { reset: resetAccompaniment } = accompaniment
-=======
   // each saved hum gets its song made right away, with the settings as they are
   const { make } = song
   useEffect(() => {
     if (upload.reply) void make(upload.reply.filename)
   }, [upload.reply, make])
 
-  const { prime } = mic
-  const { reset: resetUpload } = upload
   const { reset: resetSong } = song
->>>>>>> fe663df (bugs fixed, elevenlabs)
   const { rewind, togglePause } = turntable
   const { start, stop, reset: resetRecorder } = recorder
 
   const record = useCallback(() => {
     prime() // inside the tap: iOS only starts audio from a user gesture
     resetUpload()
-<<<<<<< HEAD
-    resetAccompaniment()
-    rewind()
-    start()
-  }, [prime, resetUpload, resetAccompaniment, rewind, start])
-=======
     resetSong()
     rewind()
     start()
   }, [prime, resetUpload, resetSong, rewind, start])
->>>>>>> fe663df (bugs fixed, elevenlabs)
 
   /** Back to an empty glass disc (tonearm home, upload and song forgotten), ready for the next hum. */
   const reset = useCallback(() => {
     resetUpload()
-<<<<<<< HEAD
-    resetAccompaniment()
-    rewind()
-    resetRecorder()
-  }, [resetUpload, resetAccompaniment, rewind, resetRecorder])
-=======
     resetSong()
     rewind()
     resetRecorder()
   }, [resetUpload, resetSong, rewind, resetRecorder])
->>>>>>> fe663df (bugs fixed, elevenlabs)
 
   const tap = useCallback(() => {
     if (phase === 'recording') stop()
@@ -131,10 +112,6 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
     rotation: turntable.rotation,
     paused: turntable.paused,
     micProblem: recorder.problem,
-<<<<<<< HEAD
-    uploadFailure: upload.failure,
-    accompanimentFailure: accompaniment.failure,
-=======
     uploadFailure: upload.failure ?? song.failure,
     /** The song to play on the record (null until it's made). */
     song: song.song,
@@ -142,7 +119,6 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
     notes: song.notes,
     /** Makes the song again from the same hum with new settings; the old one plays until then. */
     remakeSong: song.remake,
->>>>>>> fe663df (bugs fixed, elevenlabs)
     tap,
     record,
     /** Ends the recording now (hold-to-record releases the mic). */
