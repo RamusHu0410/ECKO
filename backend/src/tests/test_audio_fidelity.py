@@ -216,6 +216,68 @@ class TestVibratoFidelity:
         assert pitch["median_hz"] == pytest.approx(440.0, rel=0.05)
 
 
+class TestNoiseReduction:
+    """reduce_noise() runs ahead of segmentation/pitch/volume/spectral
+    extraction. It must measurably clean up noisy input, and — just as
+    important — leave a clean recording untouched instead of introducing
+    its own artifacts (regression: an early version merged/dropped notes
+    in a perfectly clean hum by smoothing energy across silent gaps)."""
+
+    def test_denoising_lowers_noise_floor_without_erasing_the_tone(self, tmp_path):
+        """A realistic hum recording: brief silence before/after the note
+        (mic lead-in/lead-out), noise throughout. The denoiser should learn
+        the noise profile from those silent stretches and use it to quiet
+        the background everywhere, while the note itself survives intact."""
+        rng = np.random.default_rng(7)
+        noise_amplitude = 0.01  # background hiss ~35dB below the hum, not comparable to it
+        lead = noise_amplitude * rng.standard_normal(int(SR * 0.3)).astype(np.float32)
+        tone = _tone(440.0, 1.0, amplitude=0.6) + noise_amplitude * rng.standard_normal(
+            int(SR * 1.0)
+        ).astype(np.float32)
+        trail = noise_amplitude * rng.standard_normal(int(SR * 0.3)).astype(np.float32)
+        noisy = np.concatenate([lead, tone, trail])
+
+        processor = AudioProcessor(target_sr=SR)
+        cleaned = processor.reduce_noise(noisy, SR)
+
+        lead_samples = int(SR * 0.3)
+        noise_before = np.sqrt(np.mean(noisy[:lead_samples] ** 2))
+        noise_after = np.sqrt(np.mean(cleaned[:lead_samples] ** 2))
+        assert noise_after < noise_before, "the lead-in noise floor should be measurably quieter"
+
+        # The tone itself must survive: still a clean, voiced 440Hz signal.
+        pitch = processor.extract_pitch(cleaned, SR)
+        assert pitch["voiced_frames"] > 0
+        assert pitch["median_hz"] == pytest.approx(440.0, rel=0.03)
+
+    def test_denoising_does_not_corrupt_a_clean_recording(self, tmp_path):
+        """Run a silence-separated melody (no added noise) through
+        reduce_noise and check note count/pitch/order are identical to the
+        undenoised extraction — denoising a clean hum must be a no-op in
+        substance, not just "close enough"."""
+        path = tmp_path / "clean_melody.wav"
+        sequence = [(261.63, 0.4), (329.63, 0.4), (392.00, 0.4)]  # C4, E4, G4
+        _write_tone_sequence(path, sequence)
+
+        notes_denoised = extract_notes(str(path), target_sr=SR, min_note_duration=0.05)
+
+        processor = AudioProcessor(target_sr=SR)
+        result_raw = processor.process_audio(str(path), reduce_noise=False)
+
+        assert len(notes_denoised) == len(sequence)
+        raw_notes_count = len(
+            [s for s in result_raw["segments"] if s["duration"] >= 0.05]
+        )
+        assert raw_notes_count == len(sequence)
+        for note, (expected_freq, _duration) in zip(notes_denoised, sequence):
+            assert note["pitch_hz"] == pytest.approx(expected_freq, rel=0.05)
+
+    def test_silence_stays_silence_after_denoising(self, tmp_path):
+        processor = AudioProcessor(target_sr=SR)
+        cleaned = processor.reduce_noise(_silence(1.0), SR)
+        assert np.max(np.abs(cleaned)) == pytest.approx(0.0, abs=1e-6)
+
+
 class TestRobustnessAgainstCorruption:
     """The pipeline should degrade gracefully, not silently invent data."""
 

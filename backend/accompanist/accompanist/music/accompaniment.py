@@ -16,14 +16,20 @@ from accompanist.music.voice_leading import lead_voices
 
 DEFAULT_PROGRAM = 0       # Acoustic Grand Piano (accompaniment)
 DEFAULT_VELOCITY = 100    # accompaniment base — loud, but under the melody
-# Melody sits clearly on top, a bit louder than the accompaniment.
-MELODY_PROGRAM = 0        # keep piano timbre; adjust if you want a lead voice
+# Melody sits clearly on top: louder than the accompaniment, and in a
+# distinct timbre (flute) so it doesn't blend into a piano accompaniment
+# even where a chord tone happens to share the melody's pitch.
+MELODY_PROGRAM = 73       # Flute — distinct from the piano/guitar accompaniment
 MELODY_VELOCITY = 127     # loudest — the melody line leads
 ACCOMP_VELOCITY_SCALE = 1.0
 # Force every accompaniment note to this fixed velocity so per-style dynamic
 # reductions stay consistent, while sitting below the melody. Set to None to
 # keep each style's own internal dynamics.
 ACCOMP_FIXED_VELOCITY = 100
+# When a melody is provided, keep every chord tone strictly below the
+# melody's lowest note within that bar (see `_pitches_below_melody`), so the
+# accompaniment never sits in or above the melody's register and mask it.
+MIN_ACCOMPANIMENT_PITCH = 24  # never drop chords below this (C1) chasing separation
 
 # Named General MIDI instruments (program numbers) for convenience.
 INSTRUMENTS: dict[str, int] = {
@@ -43,6 +49,36 @@ BROKEN_PATTERN = [0, 2, 1, 2]
 
 def _seconds_per_beat(tempo: float) -> float:
     return 60.0 / tempo
+
+
+def _melody_min_pitch_in_range(
+    melody_notes: list[dict], start_beat: float, end_beat: float
+) -> int | None:
+    """Lowest melody pitch sounding during [start_beat, end_beat), or None if
+    no melody note overlaps that range (e.g. the melody has a rest there)."""
+    overlapping = [
+        n["pitch"]
+        for n in melody_notes
+        if n["start"] < end_beat and n["start"] + n["duration"] > start_beat
+    ]
+    return min(overlapping) if overlapping else None
+
+
+def _pitches_below_melody(
+    pitches: list[int], melody_min_pitch: int | None, floor: int = MIN_ACCOMPANIMENT_PITCH
+) -> list[int]:
+    """Drop `pitches` by whole octaves until every one sits below
+    `melody_min_pitch`, so the accompaniment never masks the melody note it's
+    under. A no-op when there's no melody note to stay clear of, and gives up
+    (returns pitches as last shifted) if `floor` would be crossed first, so a
+    freak low melody note can't push the chord into subaudible territory.
+    """
+    if melody_min_pitch is None or not pitches:
+        return pitches
+    shifted = list(pitches)
+    while max(shifted) >= melody_min_pitch and min(shifted) - 12 >= floor:
+        shifted = [p - 12 for p in shifted]
+    return shifted
 
 
 def render_accompaniment(
@@ -98,12 +134,21 @@ def render_accompaniment(
         # Determine bar timing in beats.
         start_beat = chord.start if chord.duration else i * beats_per_bar
         dur_beats = chord.duration or beats_per_bar
+        bar_end_beat = start_beat + dur_beats
+
+        # Keep the accompaniment below the melody's register for this bar.
+        # Only touches anything when a melody was actually passed in; with no
+        # melody_notes this is a no-op and behavior is unchanged.
+        melody_floor = (
+            _melody_min_pitch_in_range(melody_notes, start_beat, bar_end_beat)
+            if melody_notes
+            else None
+        )
 
         if style_fn is not None:
-            pitches = voicings[i]
+            pitches = _pitches_below_melody(voicings[i], melody_floor)
             # The bar boundary in beats: no accompaniment note may sound past
             # here, so the previous chord always stops before the next chord.
-            bar_end_beat = start_beat + dur_beats
             for pitch, ev_start, ev_dur, vel in style_fn(
                 pitches, start_beat, dur_beats, velocity
             ):
@@ -126,7 +171,7 @@ def render_accompaniment(
                     )
                 )
         else:
-            pitches = chord_pitches(chord, octave)
+            pitches = _pitches_below_melody(chord_pitches(chord, octave), melody_floor)
             if style == "block":
                 _add_block(acc, pitches, start_beat, dur_beats, spb, velocity)
             else:  # "broken"

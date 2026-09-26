@@ -7,7 +7,13 @@ import pytest
 
 from accompanist.models.chord import Chord
 from accompanist.music.chord_to_midi import chord_pitches, pitch_names
-from accompanist.music.accompaniment import render_accompaniment, BROKEN_PATTERN
+from accompanist.music.accompaniment import (
+    render_accompaniment,
+    BROKEN_PATTERN,
+    MELODY_PROGRAM,
+    _melody_min_pitch_in_range,
+    _pitches_below_melody,
+)
 from accompanist.music.progression import generate_progression
 
 _HAS_FLUIDSYNTH = shutil.which("fluidsynth") is not None
@@ -112,6 +118,92 @@ def test_accompaniment_has_melody_and_broken_chords(tmp_path):
     assert len(pm.instruments[0].notes) == 32
     # melody notes preserved.
     assert len(pm.instruments[1].notes) == 32
+
+
+# ---------------------------------------------------------------------------
+# Melody standout: distinct timbre + accompaniment stays below the melody
+# ---------------------------------------------------------------------------
+
+
+def test_melody_track_uses_a_distinct_instrument_from_the_accompaniment(tmp_path):
+    melody = _eight_bar_melody()
+    prog = generate_progression(melody, "C", "major")
+    out = tmp_path / "acc.mid"
+    render_accompaniment(prog, str(out), style="broken", tempo=120, melody_notes=melody)
+    pm = pretty_midi.PrettyMIDI(str(out))
+    accompaniment_track, melody_track = pm.instruments
+    assert melody_track.program == MELODY_PROGRAM
+    assert melody_track.program != accompaniment_track.program
+
+
+def test_accompaniment_stays_below_the_melody_every_bar(tmp_path):
+    """The whole point of register separation: no chord tone should ever sit
+    at or above the melody note it's under, so the accompaniment can't mask
+    the melody even when they'd otherwise land on the same pitch class."""
+    melody = _eight_bar_melody()
+    prog = generate_progression(melody, "C", "major")
+    out = tmp_path / "acc.mid"
+    render_accompaniment(prog, str(out), style="broken", tempo=120, melody_notes=melody)
+    pm = pretty_midi.PrettyMIDI(str(out))
+    accompaniment_track, melody_track = pm.instruments
+
+    spb = 60.0 / 120.0
+    for acc_note in accompaniment_track.notes:
+        overlapping_melody = [
+            m for m in melody_track.notes if m.start < acc_note.end and m.end > acc_note.start
+        ]
+        for m in overlapping_melody:
+            assert acc_note.pitch < m.pitch, (
+                f"accompaniment note {acc_note.pitch}@{acc_note.start / spb:.2f}beats "
+                f"is not below overlapping melody note {m.pitch}"
+            )
+
+
+def test_no_melody_notes_leaves_accompaniment_unchanged(tmp_path):
+    """Register separation must be strictly opt-in: calls that pass no
+    melody (the vast majority of existing call sites) get byte-for-byte the
+    same accompaniment as before this feature existed."""
+    prog = [Chord("C", "major", 0, 4), Chord("F", "major", 4, 4)]
+    with_no_melody = tmp_path / "no_melody.mid"
+    render_accompaniment(prog, str(with_no_melody), style="block", tempo=120)
+    pm = pretty_midi.PrettyMIDI(str(with_no_melody))
+    assert len(pm.instruments) == 1
+    assert sorted(n.pitch for n in pm.instruments[0].notes) == [48, 52, 53, 55, 57, 60]
+
+
+class TestMelodyMinPitchHelper:
+    def test_finds_lowest_overlapping_note(self):
+        melody = [
+            {"pitch": 67, "start": 0.0, "duration": 1.0},
+            {"pitch": 60, "start": 1.0, "duration": 1.0},
+        ]
+        assert _melody_min_pitch_in_range(melody, 0.0, 2.0) == 60
+
+    def test_ignores_notes_outside_the_range(self):
+        melody = [{"pitch": 60, "start": 10.0, "duration": 1.0}]
+        assert _melody_min_pitch_in_range(melody, 0.0, 4.0) is None
+
+    def test_empty_melody_returns_none(self):
+        assert _melody_min_pitch_in_range([], 0.0, 4.0) is None
+
+
+class TestPitchesBelowMelodyHelper:
+    def test_no_melody_pitch_is_a_no_op(self):
+        assert _pitches_below_melody([48, 52, 55], None) == [48, 52, 55]
+
+    def test_shifts_down_an_octave_when_clashing(self):
+        # 55 (G3) clashes with a melody note at 55; must drop below it.
+        result = _pitches_below_melody([48, 52, 55], melody_min_pitch=55)
+        assert max(result) < 55
+        assert result == [36, 40, 43]
+
+    def test_already_below_melody_is_untouched(self):
+        assert _pitches_below_melody([36, 40, 43], melody_min_pitch=55) == [36, 40, 43]
+
+    def test_does_not_cross_the_floor(self):
+        # A very low melody note should not push chords into subaudible range.
+        result = _pitches_below_melody([24, 28, 31], melody_min_pitch=25, floor=24)
+        assert result == [24, 28, 31]  # can't shift down without crossing the floor
 
 
 @pytest.mark.skipif(not _HAS_FLUIDSYNTH, reason="fluidsynth not available")

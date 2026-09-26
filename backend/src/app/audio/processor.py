@@ -158,6 +158,99 @@ class AudioProcessor:
         )
         return cleaned
 
+    def reduce_noise(
+        self,
+        audio: np.ndarray,
+        sr: int,
+        n_fft: int = 2048,
+        oversubtract: float = 1.6,
+        spectral_floor: float = 0.05,
+        top_db: float = 30.0,
+    ) -> np.ndarray:
+        """
+        Suppress steady background noise (room hiss, mic hum) via spectral
+        subtraction, before any pitch/volume/spectral analysis runs.
+
+        The noise profile is learned only from stretches ``detect_sound_segments``
+        already considers silent (lead-in/lead-out and the gaps between hummed
+        notes) — never guessed from a statistic over the whole clip. That
+        matters because a note can be held steady for the entire clip with no
+        internal silence at all; a blind per-bin percentile would then read
+        the note's own steady magnitude as "noise" and subtract it away
+        (tried and confirmed: it silenced a continuous 440Hz tone completely).
+        Learning strictly from confirmed silence means the sung note is never
+        mistaken for noise, at the cost of skipping denoising entirely when
+        there isn't enough confirmed silence to learn from (safe no-op rather
+        than a guess).
+
+        Also deliberately does *not* smooth the subtracted spectrum across
+        time: doing so was tried and rejected too, because averaging a loud
+        frame's magnitude into its silent neighbours partially refills the
+        gaps between notes, which merges notes that ``detect_sound_segments``
+        would otherwise tell apart. Each frame is denoised independently so
+        segment boundaries stay exactly where the original audio put them.
+
+        Args:
+            audio: Mono audio signal
+            sr: Sample rate
+            n_fft: FFT window size for the noise-estimation STFT
+            oversubtract: How aggressively to subtract the learned noise
+                floor (>1 subtracts more than the raw estimate)
+            spectral_floor: Minimum fraction of the original magnitude kept
+                per bin, to avoid gating everything to zero
+            top_db: Silence threshold (dB) used to find the confirmed-silent
+                stretches the noise profile is learned from
+
+        Returns:
+            Denoised mono float32 audio signal, same length as the input.
+            Unchanged if there isn't enough confirmed silence to learn a
+            noise profile from.
+        """
+        self._debug_print(f"Reducing background noise (oversubtract={oversubtract})", "PROCESS")
+
+        if audio.size == 0 or not np.any(audio):
+            return audio.astype(np.float32)
+
+        hop_length = n_fft // 4
+        stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
+        magnitude, phase = np.abs(stft), np.angle(stft)
+
+        voiced_intervals = librosa.effects.split(
+            audio, top_db=top_db, frame_length=n_fft, hop_length=hop_length
+        )
+        frame_times = librosa.frames_to_time(
+            np.arange(magnitude.shape[1]), sr=sr, hop_length=hop_length
+        )
+        is_voiced_frame = np.zeros(magnitude.shape[1], dtype=bool)
+        for start_sample, end_sample in voiced_intervals:
+            is_voiced_frame |= (frame_times >= start_sample / sr) & (
+                frame_times <= end_sample / sr
+            )
+        noise_only_frames = magnitude[:, ~is_voiced_frame]
+
+        if noise_only_frames.shape[1] < 2:
+            self._debug_print(
+                "No confirmed silence to learn a noise profile from; skipping denoise",
+                "WARNING",
+            )
+            return audio.astype(np.float32)
+
+        noise_floor = np.mean(noise_only_frames, axis=1, keepdims=True)
+        subtracted = magnitude - oversubtract * noise_floor
+        cleaned_magnitude = np.maximum(subtracted, spectral_floor * magnitude)
+
+        cleaned = librosa.istft(
+            cleaned_magnitude * np.exp(1j * phase),
+            hop_length=hop_length,
+            length=len(audio),
+        )
+
+        self._debug_print(
+            f"Noise reduction: mean magnitude {np.mean(magnitude):.4f} -> {np.mean(cleaned_magnitude):.4f}",
+            "SUCCESS",
+        )
+        return cleaned.astype(np.float32)
+
     def get_audio_info(self, filepath: str) -> Dict[str, Any]:
         """
         Get basic info about WAV file without loading full audio.
@@ -461,6 +554,7 @@ class AudioProcessor:
         extract_pitch: bool = True,
         extract_volume: bool = True,
         extract_spectral: bool = True,
+        reduce_noise: bool = True,
     ) -> Dict[str, Any]:
         """
         Process WAV file and return comprehensive analysis results.
@@ -471,6 +565,9 @@ class AudioProcessor:
             extract_pitch: Whether to extract pitch (fundamental frequency)
             extract_volume: Whether to extract volume envelope
             extract_spectral: Whether to extract spectral features
+            reduce_noise: Whether to suppress background noise (see
+                ``reduce_noise()``) before running any of the above, so
+                every downstream feature reads from a cleaner signal
 
         Returns:
             Dict with processing results in a consistent structure
@@ -484,9 +581,16 @@ class AudioProcessor:
         # Load audio
         load_start = time.time()
         audio, sr = self.load_wav(filepath)
+        info = self.get_audio_info(filepath)
+
+        # Strip background noise first so segment detection, pitch tracking,
+        # and the volume/spectral features all read from the same clean
+        # signal instead of each having to be separately noise-tolerant.
+        if reduce_noise:
+            audio = self.reduce_noise(audio, sr)
+
         self.audio = audio
         self.sr = sr
-        info = self.get_audio_info(filepath)
         self._debug_print(f"Load + info took {time.time() - load_start:.3f}s")
 
         # Basic analysis
