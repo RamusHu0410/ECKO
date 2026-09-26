@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, current_app, request, has_app_context
 from werkzeug.utils import secure_filename
 
 # Import the new audio processor
-from ..audio.processor import AudioProcessor, load_and_process_wav
+from ..audio.processor import AudioProcessor, build_melody, load_and_process_wav
 
 bp = Blueprint("main", __name__)
 
@@ -149,6 +149,12 @@ def upload_wav():
                     f"[ROUTE] Volume: mean_rms={vol.get('mean_rms', 0):.6f}, max_rms={vol.get('max_rms', 0):.6f}, dynamic_range={vol.get('dynamic_range_db', 0):.1f}dB"
                 )
 
+            # Notes in the shape accompanist.generate_accompaniment expects
+            # (POST /accompaniment/generate), so the frontend can hand this
+            # straight back once the user picks a style/tempo/pitch.
+            melody = build_melody(processing_results)
+            print(f"[ROUTE] Melody notes extracted: {len(melody)}")
+
             # Add processing results to response
             response_data = {
                 "status": "success",
@@ -158,6 +164,7 @@ def upload_wav():
                 "size_mb": round(file_size / (1024 * 1024), 2),
                 "saved_path": filepath,
                 "audio_analysis": processing_results,
+                "melody": melody,
                 "processing_time_seconds": round(proc_time, 3),
                 "total_request_time_seconds": round(time.time() - request_start, 3),
             }

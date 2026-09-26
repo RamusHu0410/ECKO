@@ -744,6 +744,11 @@ def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
     return melody
 
 
+# Public alias: the API contract routes import, keeping ``_build_melody`` as the
+# internal name the tests already exercise directly.
+build_melody = _build_melody
+
+
 def analyze_audio_file(
     filepath: str,
     target_sr: int = 22050,
