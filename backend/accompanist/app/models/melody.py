@@ -38,3 +38,21 @@ class Melody:
     key: str = "C"
     mode: str = "major"
     tempo: float = 120.0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Melody":
+        """Build a Melody from a JSON-style dict.
+
+        Expects a "melody" list of note dicts (hz/start/duration) plus
+        optional "key", "mode", and "tempo" fields.
+        """
+        notes = [
+            Note(hz=n["hz"], start=n["start"], duration=n["duration"])
+            for n in data.get("melody", [])
+        ]
+        return cls(
+            notes=notes,
+            key=data.get("key", "C"),
+            mode=data.get("mode", "major"),
+            tempo=data.get("tempo", 120.0),
+        )
