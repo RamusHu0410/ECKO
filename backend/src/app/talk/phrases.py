@@ -1,4 +1,4 @@
-"""Every fixed sentence the voice can say when Gemini isn't asked or can't answer."""
+"""Every fixed sentence the voice can say when Gemini isn't asked, can't answer, or its edit was corrected."""
 
 from .commands import Adjustment
 
@@ -31,3 +31,28 @@ def already_there(blocked: list[Adjustment]) -> str:
     if first.direction == "reset":
         return f"{_NAMES[first.setting]} is already back to normal. Anything else you'd like to change?"
     return f"It's already {_ALREADY[(first.setting, first.direction)]}. Anything else you'd like to change?"
+
+
+# When edits.check corrects Gemini's edit, these replace its reply, which described the uncorrected edit.
+def done_but(notes: list[str]) -> str:
+    return "Done! " + " ".join(notes)
+
+
+def kept(name: str) -> str:
+    return f"I kept the {name}, since you didn't ask to take it out."
+
+
+def drums_underneath(name: str) -> str:
+    return f"Drums can't carry your tune, so I kept the {name} and put the drums underneath."
+
+
+def carries_the_tune(name: str) -> str:
+    return f"The {name} is carrying your tune, so I kept it. You could swap it for another instrument instead."
+
+
+def not_in_song(name: str) -> str:
+    return f"I can't find the {name} in your song."
+
+
+def no_sound_for(name: str) -> str:
+    return f"I don't have a sound for {name} yet."

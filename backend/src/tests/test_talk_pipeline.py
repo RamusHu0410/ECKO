@@ -109,5 +109,5 @@ def test_speech_to_text_failure_keeps_the_song():
 
 def test_to_dict_is_what_the_page_reads():
     turn = Pipeline(FakeGemini()).from_text("faster", MIDDLE)
-    assert set(turn.to_dict()) == {"heard", "intent", "settings", "changed", "reply", "timings", "error"}
+    assert set(turn.to_dict()) == {"heard", "intent", "settings", "changed", "understood", "reply", "timings", "error"}
     assert turn.to_dict()["settings"]["speed"] == 0.7

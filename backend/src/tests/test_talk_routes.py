@@ -10,6 +10,7 @@ import soundfile
 from talk_fakes import FakeGemini, fake_services, write_hum
 
 from app.talk.commands import Command
+from app.talk.settings import SongSettings
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def test_spoken_undo_goes_back_one_version(talk_client, gemini):
     gemini.command = Command(intent="undo", reply="Back it goes.")
     turn = send_voice(talk_client, {"settings": {"speed": 0.9, "style": "rock"}, "previous": {"speed": 0.5}}).get_json()
     assert turn["intent"] == "undo"
-    assert turn["settings"] == {"emotion": 0.5, "speed": 0.5, "pitch": 0.5, "style": None, "extras": []}
+    assert turn["settings"] == SongSettings().to_dict()
 
 
 def test_bad_voice_requests_get_a_clear_message(talk_client):

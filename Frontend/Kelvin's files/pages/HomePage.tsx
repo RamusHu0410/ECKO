@@ -159,6 +159,17 @@ export default function HomePage() {
           </AnimatePresence>
         </div>
 
+        {/* what ECKO understood the last command to do, e.g. "✓ Keep piano" and "+ Add violin — soft, in the background" */}
+        <AnimatePresence>
+          {talking && talk.understood.length > 0 && (
+            <motion.ul key="understood" className="mt-2 text-center text-xs leading-relaxed text-ink-muted" {...appear}>
+              {talk.understood.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </motion.ul>
+          )}
+        </AnimatePresence>
+
         <p className="sr-only" aria-live="polite">
           {(talking && talk.reply) || ANNOUNCEMENTS[phase] || ''}
         </p>

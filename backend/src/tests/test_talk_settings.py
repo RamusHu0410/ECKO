@@ -1,14 +1,15 @@
-"""The settings arithmetic: steps, limits, resets, styles and extras. No network."""
+"""The settings arithmetic: steps, limits, resets, styles and instruments. No network."""
 
 import pytest
 
-from app.talk.commands import Adjustment, Command
-from app.talk.settings import SongSettings, apply_command, blocked_adjustments, changed_fields, clean_label, move_dial
+from app.talk.commands import Adjustment, Change, Command, NewInstrument
+from app.talk.settings import PIANO, Part, SongSettings, apply_command, blocked_adjustments, changed_fields, clean_label, move_dial
 
 
-def command(*changes, style=None, add=(), remove=()):
+def command(*changes, style=None, add=(), remove=(), change=()):
     adjustments = [Adjustment(setting=s, direction=d, amount=a) for s, d, a in changes]
-    return Command(intent="adjust", adjustments=adjustments, style=style, extras_add=list(add), extras_remove=list(remove), reply="ok")
+    new = [NewInstrument(instrument=name) for name in add]
+    return Command(intent="adjust", adjustments=adjustments, style=style, add=new, remove=list(remove), change=list(change), reply="ok")
 
 
 @pytest.mark.parametrize(
@@ -36,16 +37,22 @@ def test_relative_changes_build_on_the_current_settings():
     assert changed_fields(now, after) == ["emotion", "speed"]
 
 
-def test_style_and_extras():
-    after = apply_command(SongSettings(extras=("piano",)), command(style="  Rock ", add=["Drums", "drums"], remove=["piano"]))
+def test_style_and_instruments():
+    # apply_command gets names already checked by edits.check, so it simply applies them
+    after = apply_command(SongSettings(instruments=(PIANO, Part("violin"))), command(style="  Rock ", add=["drums", "drums"], remove=["violin"]))
     assert after.style == "rock"
-    assert after.extras == ("drums",)
+    assert after.instruments == (PIANO, Part("drums"))
+    assert changed_fields(SongSettings(), after) == ["style", "instruments"]
 
 
-def test_bad_labels_are_ignored():
-    after = apply_command(SongSettings(style="jazz"), command(style="<script>", add=["x" * 60, ""]))
-    assert after.style == "jazz"
-    assert after.extras == ()
+def test_bad_style_is_ignored():
+    assert apply_command(SongSettings(style="jazz"), command(style="<script>")).style == "jazz"
+
+
+@pytest.mark.parametrize(("level", "step", "expected"), [("soft", "louder", "normal"), ("normal", "louder", "loud"), ("loud", "louder", "loud"), ("soft", "softer", "soft")])
+def test_levels_step_and_stop_at_the_ends(level, step, expected):
+    song = SongSettings(instruments=(PIANO, Part("violin", level=level)))
+    assert apply_command(song, command(change=[Change(instrument="violin", level=step)])).instruments[1].level == expected
 
 
 @pytest.mark.parametrize(("text", "expected"), [("Lo-Fi", "lo-fi"), ("drum & bass", "drum & bass"), ("rock!", None), (42, None), ("", None)])
@@ -53,10 +60,10 @@ def test_clean_label(text, expected):
     assert clean_label(text) == expected
 
 
-def test_extras_keep_the_newest_eight():
-    many = command(add=[f"extra {n}" for n in range(4)])
-    settings = SongSettings(extras=tuple(f"old {n}" for n in range(6)))
-    assert apply_command(settings, many).extras == ("old 2", "old 3", "old 4", "old 5", "extra 0", "extra 1", "extra 2", "extra 3")
+def test_a_song_holds_at_most_six_instruments():
+    settings = SongSettings(instruments=(PIANO, *(Part(f"old {n}") for n in range(4))))
+    after = apply_command(settings, command(add=["new 1", "new 2", "new 3"]))
+    assert [part.name for part in after.instruments] == ["piano", "old 0", "old 1", "old 2", "old 3", "new 1"]
 
 
 def test_blocked_adjustments_find_changes_that_did_nothing():
@@ -66,13 +73,49 @@ def test_blocked_adjustments_find_changes_that_did_nothing():
 
 
 def test_from_dict_reads_and_clamps_what_the_page_sends():
-    settings = SongSettings.from_dict({"emotion": 1.4, "speed": 0, "pitch": 0.333, "style": "Jazz", "extras": ["Drums", 5]})
-    assert settings == SongSettings(emotion=1.0, speed=0.0, pitch=0.33, style="jazz", extras=("drums",))
+    violin = {"name": "violin", "role": "background", "level": "soft", "section": "end"}
+    settings = SongSettings.from_dict(
+        {"emotion": 1.4, "speed": 0, "pitch": 0.333, "style": "Jazz", "instruments": [PIANO_DICT, violin], "energy": {"end": -1}}
+    )
+    assert settings == SongSettings(emotion=1.0, speed=0.0, pitch=0.33, style="jazz", instruments=(PIANO, Part("violin", section="end")), energy=(0, -1))
     assert SongSettings.from_dict(None) == SongSettings()
-    assert SongSettings.from_dict({}).to_dict() == {"emotion": 0.5, "speed": 0.5, "pitch": 0.5, "style": None, "extras": []}
+    assert SongSettings.from_dict({}).to_dict() == {
+        "emotion": 0.5,
+        "speed": 0.5,
+        "pitch": 0.5,
+        "style": None,
+        "instruments": [PIANO_DICT],
+        "energy": {"start": 0, "end": 0},
+    }
 
 
-@pytest.mark.parametrize("bad", [{"speed": "fast"}, {"speed": True}, {"pitch": float("nan")}, {"extras": "drums"}, ["not", "a", "dict"]])
+def test_from_dict_always_gives_the_song_one_lead():
+    no_lead = SongSettings.from_dict({"instruments": [{"name": "violin", "role": "background", "level": "soft", "section": "end"}]})
+    assert no_lead.instruments == (Part("violin", "lead", "soft", "all"),)  # the lead plays the whole song
+    only_drums = SongSettings.from_dict({"instruments": [{"name": "drums", "role": "lead", "level": "soft", "section": "all"}]})
+    assert only_drums.instruments == (PIANO, Part("drums"))
+    assert SongSettings.from_dict({"instruments": []}).instruments == (PIANO,)
+
+
+PIANO_DICT = {"name": "piano", "role": "lead", "level": "normal", "section": "all"}
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"speed": "fast"},
+        {"speed": True},
+        {"pitch": float("nan")},
+        {"instruments": "drums"},
+        {"instruments": ["drums"]},
+        {"instruments": [{**PIANO_DICT, "level": "deafening"}]},
+        {"instruments": [{**PIANO_DICT, "name": "<script>"}]},
+        {"energy": {"end": 3}},
+        {"energy": {"start": 0.5}},
+        {"energy": [1, 1]},
+        ["not", "a", "dict"],
+    ],
+)
 def test_from_dict_rejects_nonsense(bad):
     with pytest.raises(ValueError):
         SongSettings.from_dict(bad)
