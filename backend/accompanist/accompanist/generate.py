@@ -16,8 +16,9 @@ from accompanist.models.chord import Chord
 from accompanist.models.melody import Melody
 from accompanist.music.key_detection import detect_key_from_notes
 from accompanist.music.progression import generate_progression
-from accompanist.music.accompaniment import render_accompaniment
-from accompanist.music.styles import STYLES
+from accompanist.music.accompaniment import render_accompaniment, INSTRUMENTS
+from accompanist.music.styles import STYLES, STYLE_SCALES
+from accompanist.music.scales import snap_notes
 
 DEFAULT_BEATS_PER_BAR = 4.0
 
@@ -73,6 +74,8 @@ def generate_accompaniment(
     tempo: Optional[float] = None,
     beats_per_bar: float = DEFAULT_BEATS_PER_BAR,
     include_melody: bool = True,
+    allow_edit_melody: bool = False,
+    instrument: str = "piano",
     render_wav: bool = False,
     wav_path: Optional[str] = None,
 ) -> AccompanimentResult:
@@ -88,6 +91,12 @@ def generate_accompaniment(
         tempo: Override tempo (BPM). Falls back to the melody's tempo.
         beats_per_bar: Bar length in beats.
         include_melody: Also write the melody on its own track.
+        allow_edit_melody: If True, the engine may modify the melody itself —
+            snapping pitches to the style's scale and (for jazz) applying a
+            swung, ornamented feel. If False (default), the melody is left
+            exactly as given and only the accompaniment reflects the style.
+        instrument: Named instrument for playback, e.g. "piano", "guitar",
+            "guitar_jazz", "strings", "sax". Applies to both tracks.
         render_wav: If True, also render a WAV via FluidSynth.
         wav_path: WAV output path (defaults to midi_path with .wav).
 
@@ -117,22 +126,63 @@ def generate_accompaniment(
 
     resolved_tempo = tempo or float(melody.tempo)
 
+    # 2b. Scale flavoring + melody editing.
+    #     Harmony is always derived from scale-correct notes for scale-based
+    #     styles, but the *melody track* is only modified when the caller opts
+    #     in via allow_edit_melody.
+    scale_name = STYLE_SCALES.get(style)
+    harmony_notes = melody_notes  # what the chord selection reasons over
+
+    if scale_name is not None:
+        # Snap the harmony source so chords fit the style's scale regardless.
+        harmony_notes = snap_notes(melody_notes, resolved_key, scale_name)
+
+        if allow_edit_melody:
+            if style == "jazz":
+                # Full jazz treatment: snap + swing feel + light ornamentation.
+                from accompanist.music.melody_styling import jazz_stylize
+
+                melody_notes = jazz_stylize(melody_notes, resolved_key, scale_name)
+                warnings.append(
+                    "Melody edited: snapped to the jazz scale and given a "
+                    "swung, ornamented jazz feel."
+                )
+            else:
+                melody_notes = snap_notes(melody_notes, resolved_key, scale_name)
+                warnings.append(
+                    f"Melody edited: snapped to the {scale_name} scale for "
+                    f"'{style}' style."
+                )
+        else:
+            warnings.append(
+                "Melody left unedited (allow_edit_melody is off); only the "
+                "accompaniment reflects the style."
+            )
+
     # 3-7. Segments -> candidates -> scoring -> progression optimization.
     #      (voice leading is applied inside render for the classical style)
     progression = generate_progression(
-        melody_notes,
+        harmony_notes,
         key=resolved_key,
         mode=resolved_mode,
         beats_per_bar=beats_per_bar,
     )
 
-    # 8-9. Style pattern -> MIDI
+    # 8-9. Style pattern -> MIDI (with the chosen instrument on both tracks)
+    program = INSTRUMENTS.get(instrument, INSTRUMENTS["piano"])
+    if instrument not in INSTRUMENTS:
+        warnings.append(
+            f"Unknown instrument '{instrument}'; defaulting to piano. "
+            f"Options: {sorted(INSTRUMENTS)}"
+        )
     render_accompaniment(
         progression,
         midi_path,
         style=style,
         tempo=resolved_tempo,
         beats_per_bar=beats_per_bar,
+        program=program,
+        melody_program=program,
         melody_notes=melody_notes if include_melody else None,
     )
 

@@ -56,3 +56,11 @@ uv run pytest tests/test_styles_and_voice_leading.py -v
 
 cd /Users/ramushu/dev/ECKO/ECKO/backend/src
 ../.venv/bin/python -c "from app import create_app; create_app('development').run(host='127.0.0.1', port=8000)"
+
+cd /Users/ramushu/dev/ECKO/ECKO/backend/accompanist
+.venv/bin/python -m pytest tests/test_scales.py -v
+
+.venv/bin/python make_test_wav.py jazz jazz.wav
+.venv/bin/python make_test_wav.py asian_folk folk.wav
+afplay jazz.wav
+afplay folk.wav

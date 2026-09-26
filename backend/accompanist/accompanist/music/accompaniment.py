@@ -14,8 +14,24 @@ from accompanist.music.chord_to_midi import chord_pitches
 from accompanist.music.styles import STYLES
 from accompanist.music.voice_leading import lead_voices
 
-DEFAULT_PROGRAM = 0       # Acoustic Grand Piano
+DEFAULT_PROGRAM = 0       # Acoustic Grand Piano (accompaniment)
 DEFAULT_VELOCITY = 80
+# Melody sits on its own, brighter instrument and louder so it stands out.
+MELODY_PROGRAM = 0        # keep piano timbre; adjust if you want a lead voice
+MELODY_VELOCITY = 118     # loud, so the tune is clearly on top
+ACCOMP_VELOCITY_SCALE = 1.0  # keep the accompaniment at its natural volume
+
+# Named General MIDI instruments (program numbers) for convenience.
+INSTRUMENTS: dict[str, int] = {
+    "piano": 0,             # Acoustic Grand Piano
+    "guitar": 24,           # Acoustic Guitar (nylon)
+    "guitar_steel": 25,     # Acoustic Guitar (steel)
+    "guitar_jazz": 26,      # Electric Guitar (jazz)
+    "guitar_clean": 27,     # Electric Guitar (clean)
+    "electric_piano": 4,    # Electric Piano 1
+    "strings": 48,          # String Ensemble
+    "sax": 66,              # Tenor Sax
+}
 # Broken-chord order expressed as indices into the [root, third, fifth] triad.
 # root, fifth, third, fifth  ->  e.g. C: C G E G
 BROKEN_PATTERN = [0, 2, 1, 2]
@@ -35,6 +51,7 @@ def render_accompaniment(
     octave: int = 3,
     melody_notes: list[dict] | None = None,
     program: int = DEFAULT_PROGRAM,
+    melody_program: int = MELODY_PROGRAM,
     velocity: int = DEFAULT_VELOCITY,
 ) -> str:
     """Render a chord progression (optionally with melody) to a MIDI file.
@@ -80,15 +97,24 @@ def render_accompaniment(
 
         if style_fn is not None:
             pitches = voicings[i]
+            # The bar boundary in beats: no accompaniment note may sound past
+            # here, so the previous chord always stops before the next chord.
+            bar_end_beat = start_beat + dur_beats
             for pitch, ev_start, ev_dur, vel in style_fn(
                 pitches, start_beat, dur_beats, velocity
             ):
+                # Clamp the note so it never bleeds into the next chord's bar.
+                ev_end = min(ev_start + ev_dur, bar_end_beat)
+                if ev_end <= ev_start:
+                    continue  # fully out of bounds; skip
+                # Pull the accompaniment back so the melody sits clearly on top.
+                scaled_vel = max(1, min(127, int(vel * ACCOMP_VELOCITY_SCALE)))
                 acc.notes.append(
                     pretty_midi.Note(
-                        velocity=max(1, min(127, vel)),
+                        velocity=scaled_vel,
                         pitch=int(pitch),
                         start=ev_start * spb,
-                        end=(ev_start + ev_dur) * spb,
+                        end=ev_end * spb,
                     )
                 )
         else:
@@ -101,13 +127,14 @@ def render_accompaniment(
     pm.instruments.append(acc)
 
     if melody_notes:
-        mel = pretty_midi.Instrument(program=program)
+        # Melody on its own track, played loud so it clearly leads.
+        mel = pretty_midi.Instrument(program=melody_program)
         for n in melody_notes:
             start = n["start"] * spb
             end = start + n["duration"] * spb
             mel.notes.append(
                 pretty_midi.Note(
-                    velocity=DEFAULT_VELOCITY + 20,
+                    velocity=MELODY_VELOCITY,
                     pitch=int(n["pitch"]),
                     start=start,
                     end=end,

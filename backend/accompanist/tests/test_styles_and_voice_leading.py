@@ -20,7 +20,9 @@ PROG = [Chord("C", "major"), Chord("F", "major"), Chord("G", "major")]
 # ---------------------------------------------------------------------------
 
 def test_all_styles_registered():
-    assert set(STYLES) == {"piano", "pop", "cinematic", "classical"}
+    # The four core styles must always be present (scale-flavored styles like
+    # jazz/asian_folk may be added alongside them).
+    assert {"piano", "pop", "cinematic", "classical"} <= set(STYLES)
 
 
 def test_styles_produce_notes(tmp_path):

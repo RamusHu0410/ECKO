@@ -58,8 +58,10 @@ def _render_original(melody: dict, wav_path: str, tempo: float) -> str | None:
 
 
 def main() -> int:
+    # Usage: make_test_wav.py [style] [out.wav] [instrument]
     style = sys.argv[1] if len(sys.argv) > 1 else "classical"
     wav_path = sys.argv[2] if len(sys.argv) > 2 else "test.wav"
+    instrument = sys.argv[3] if len(sys.argv) > 3 else "piano"
     midi_path = wav_path.rsplit(".", 1)[0] + ".mid"
 
     melody = _demo_melody()
@@ -73,11 +75,14 @@ def main() -> int:
         melody,
         midi_path,
         style=style,
+        allow_edit_melody=True,  # apply jazz/pentatonic melody styling in the demo
+        instrument=instrument,
         render_wav=True,
         wav_path=wav_path,
     )
 
     print(f"style:       {style}")
+    print(f"instrument:  {instrument}")
     print(f"key:         {result.key} {result.mode}")
     print(f"progression: {' '.join(result.progression_symbols)}")
     print(f"midi:        {result.midi_path}")
