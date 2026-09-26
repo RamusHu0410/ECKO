@@ -1,10 +1,10 @@
 """Tests for key detection (Phase 5) and melody extraction (Phase 6)."""
 
-from app.models.melody import Melody, Note
-from app.music.melody_to_midi import melody_to_midi
-from app.music.midi_reader import read_midi
-from app.music.key_detection import detect_key
-from app.music.melody_extractor import extract_melody
+from accompanist.models.melody import Melody, Note
+from accompanist.music.melody_to_midi import melody_to_midi
+from accompanist.music.midi_reader import read_midi
+from accompanist.music.key_detection import detect_key
+from accompanist.music.melody_extractor import extract_melody
 
 
 def _write(melody: Melody, path) -> str:

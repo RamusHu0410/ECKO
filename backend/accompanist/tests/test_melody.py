@@ -2,7 +2,7 @@
 
 import json
 
-from app.models.melody import Melody, Note
+from accompanist.models.melody import Melody, Note
 
 TEST_JSON = """
 {

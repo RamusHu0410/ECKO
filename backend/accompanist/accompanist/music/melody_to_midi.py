@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pretty_midi
 
-from app.models.melody import Melody
+from accompanist.models.melody import Melody
 
 # Default program: 0 = Acoustic Grand Piano (General MIDI).
 DEFAULT_PROGRAM = 0

@@ -5,9 +5,9 @@ import wave
 
 import pytest
 
-from app.models.melody import Melody, Note
-from app.music.melody_to_midi import melody_to_midi
-from app.audio.render import render_midi, find_soundfont
+from accompanist.models.melody import Melody, Note
+from accompanist.music.melody_to_midi import melody_to_midi
+from accompanist.audio.render import render_midi, find_soundfont
 
 _HAS_FLUIDSYNTH = shutil.which("fluidsynth") is not None
 

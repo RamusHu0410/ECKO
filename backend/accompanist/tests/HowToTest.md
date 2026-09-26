@@ -44,4 +44,15 @@ print('notes:', extract_melody(read_midi('test.mid')))
 "
 
 
+Chords:
+cd backend/accompanist
+uv run pytest tests/test_chord_candidates.py -v
+uv run pytest tests/test_chord_scoring.py -v
+uv run pytest tests/test_progression.py -v
+uv run pytest tests/test_progression_rules.py -v
+uv run pytest tests/test_accompaniment.py -v
+uv run pytest tests/test_styles_and_voice_leading.py -v
 
+
+cd /Users/ramushu/dev/ECKO/ECKO/backend/src
+../.venv/bin/python -c "from app import create_app; create_app('development').run(host='127.0.0.1', port=8000)"

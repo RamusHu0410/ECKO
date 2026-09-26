@@ -4,8 +4,8 @@ import os
 
 import pretty_midi
 
-from app.models.melody import Melody, Note
-from app.music.melody_to_midi import melody_to_midi
+from accompanist.models.melody import Melody, Note
+from accompanist.music.melody_to_midi import melody_to_midi
 
 
 def make_melody() -> Melody:

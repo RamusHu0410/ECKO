@@ -2,6 +2,7 @@ import os
 from flask import Flask
 from .config import config
 from .routes.main import bp as main_bp
+from .routes.accompaniment import bp as accompaniment_bp
 
 def create_app(config_name=None):
     """Application factory pattern for Flask app initialization."""
@@ -18,6 +19,7 @@ def create_app(config_name=None):
     
     # Register blueprints
     app.register_blueprint(main_bp)
+    app.register_blueprint(accompaniment_bp)
     
     # Initialize extensions here if needed
     # from .extensions import db, migrate
