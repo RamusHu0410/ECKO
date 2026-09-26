@@ -46,6 +46,7 @@ CLIPPED_LEVEL = 0.999  # samples at or above this (full scale 1.0) are clipped
 CLIPPED_SHARE = 0.001  # more than this share of clipped samples earns a warning
 QUIET_PEAK = 0.03  # a recording that never gets louder than ~-30 dBFS is too quiet
 UNPITCHED_SHARE = 0.5  # more than this share of the sound unpitched: not a clear single tune
+MIN_OUTPUT_NOTE_SECONDS = 0.3  # finalized notes shorter than 300 ms are transient artifacts
 
 SILENT_RMS = 0.001
 
@@ -456,6 +457,9 @@ def _notes_from_pitch(pitch: Dict[str, Any], settings: NoteSettings = DEFAULT_SE
         unpitched_share = float(np.mean(~active[loud])) if loud.any() else 0.0
         active = active & loud
     notes = segment_notes(times, midi, active, rms_db, settings)
+    # Keep segmentation sensitive enough to separate nearby notes, then discard transient
+    # finalized notes at the output boundary using their unrounded real-time duration.
+    notes = [note for note in notes if note["duration"] + 1e-9 >= MIN_OUTPUT_NOTE_SECONDS]
     tuning = estimate_tuning(notes, settings)
     for note in notes:
         note["midi"] -= tuning
