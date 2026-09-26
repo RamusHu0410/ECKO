@@ -4,6 +4,7 @@ import numpy as np
 from typing import Tuple, Optional, Dict, Any, List
 import logging
 import time
+from accompanist.generate import generate_accompaniment
 
 # Try to import audio processing libraries
 try:
@@ -915,7 +916,7 @@ def extract_notes(
                 f"  Note {i}: {n['start']:.2f}s-{n['end']:.2f}s "
                 f"dur={n['duration']:.2f}s vol={n['volume']:.4f} pitch={n['pitch_hz']:.1f}Hz"
             )
-
+    generate_accompaniment(notes)
     return notes
 
 
