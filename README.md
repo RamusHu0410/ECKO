@@ -1,6 +1,6 @@
 # ECKO
 
-Hum a tune, get a song, and share your results with everyone else. Everyone can be a composer! 
+**Hum a tune, get a song, and share your results with everyone else. Everyone can be a composer!** 
 
 ECKO turns a short vocal melody into a fully
 arranged musical accompaniment, lets you reshape it with your voice, and
