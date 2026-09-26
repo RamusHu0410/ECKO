@@ -2,15 +2,13 @@
 @import "@fontsource/instrument-serif/latin-400.css";
 @import "./tokens.css";
 @import "./glass.css";
-@import "./wood-background.css";
+@import "./turntable.css";
 @import "./vinyl.css";
-
-/* liquid-glass-react styles its own layers with Tailwind classes, so Tailwind must scan it */
-@source "../../node_modules/liquid-glass-react/dist";
+@import "./scene.css";
 
 @layer base {
   html {
-    background-color: var(--color-wood);
+    background-color: var(--color-page);
     color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;

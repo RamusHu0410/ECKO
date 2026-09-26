@@ -1,0 +1,266 @@
+/*
+ * The 2.5D turntable. The top plate is an ordinary flat layout (platter, disc, tonearm), tilted
+ * into perspective. The plinth is a CSS 3D box: every face (top, front, side, the floor shadow)
+ * shares one orientation, --tt-orient, then moves and folds into place along its edge, so
+ * thickness and perspective always agree. Each face carries its full 3D transform under the
+ * body's perspective instead of relying on transform-style: preserve-3d, which WebKit may flatten
+ * (the faces then vanish edge-on). The HTML order paints them back to front.
+ * Light comes from the top-left: the top is brightest, the front face darker, the side darkest.
+ * Nothing in here uses backdrop-filter: it is unreliable inside 3D transforms.
+ */
+@layer components {
+  .tt-stage {
+    --plate-d: calc(var(--plate-w) * var(--plate-depth-ratio));
+    --plinth-h: calc(var(--plate-w) * var(--plinth-height-ratio));
+    position: relative;
+    width: calc(var(--plate-w) * 1.28);
+    height: calc(var(--plate-w) * 0.8);
+    perspective: var(--tt-perspective);
+    perspective-origin: 50% 20%;
+  }
+
+  .tt-body {
+    /* tilt and turn about the plate's center */
+    --tt-orient: translate(calc(var(--plate-w) / 2), calc(var(--plate-d) / 2)) rotateX(var(--tt-tilt))
+      rotateZ(var(--tt-yaw)) translate(calc(var(--plate-w) / -2), calc(var(--plate-d) / -2));
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    width: var(--plate-w);
+    height: var(--plate-d);
+    margin-left: calc(var(--plate-w) / -2);
+    margin-top: calc(var(--plate-d) / -2);
+    perspective: var(--tt-perspective);
+    perspective-origin: 50% 0%;
+  }
+
+  .tt-top,
+  .tt-face,
+  .tt-ground-shadow {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+  }
+
+  /* Walnut: the maple photo multiplied down to walnut, shaded per face */
+  .tt-top,
+  .tt-face {
+    position: absolute;
+    background-color: var(--color-wood);
+    background-image: linear-gradient(var(--wood-shade) 0 0), var(--wood-photo, none);
+    background-blend-mode: multiply, normal;
+    background-size: cover;
+    background-position: center;
+  }
+
+  .tt-top {
+    width: var(--plate-w);
+    height: var(--plate-d);
+    transform: var(--tt-orient);
+    border-radius: 6px;
+    box-shadow:
+      inset 0 2px 0 var(--wood-bevel-light),
+      inset 2px 0 0 var(--wood-bevel-light),
+      inset 0 -2px 0 var(--wood-bevel-dark),
+      inset -2px 0 0 var(--wood-bevel-dark),
+      inset 0 0 28px rgba(20, 10, 4, 0.22);
+  }
+
+  /* hangs from the plate's front edge */
+  .tt-face-front {
+    width: var(--plate-w);
+    height: var(--plinth-h);
+    transform: var(--tt-orient) translateY(var(--plate-d)) rotateX(-90deg);
+    background-image:
+      linear-gradient(180deg, var(--wood-bevel-light) 0, transparent 5px),
+      linear-gradient(var(--wood-face-front) 0 0),
+      linear-gradient(var(--wood-shade) 0 0),
+      var(--wood-photo, none);
+    background-blend-mode: normal, normal, multiply, normal;
+  }
+
+  /* hangs from the plate's right edge */
+  .tt-face-side {
+    width: var(--plinth-h);
+    height: var(--plate-d);
+    transform: var(--tt-orient) translateX(var(--plate-w)) rotateY(90deg);
+    background-image:
+      linear-gradient(90deg, var(--wood-bevel-light) 0, transparent 4px),
+      linear-gradient(var(--wood-face-side) 0 0),
+      linear-gradient(var(--wood-shade) 0 0),
+      var(--wood-photo, none);
+    background-blend-mode: normal, normal, multiply, normal;
+  }
+
+  /* The shadow the whole turntable casts on the page: a tight contact shadow and a wide
+     ambient one, drawn on the floor plane under the plinth so perspective applies to them too */
+  .tt-ground-shadow {
+    width: var(--plate-w);
+    height: var(--plate-d);
+    border-radius: 8px;
+    transform: var(--tt-orient) translateZ(calc(var(--plinth-h) * -1));
+    box-shadow:
+      6px 10px 14px 2px var(--shadow-contact),
+      40px 60px 90px 20px var(--shadow-ambient);
+  }
+
+  /* Brushed-aluminum platter with a little thickness and its shadow on the wood */
+  .tt-platter {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 20deg,
+      var(--metal-light),
+      var(--metal-mid) 12%,
+      var(--metal-light) 24%,
+      var(--metal-dark) 38%,
+      var(--metal-light) 52%,
+      var(--metal-mid) 66%,
+      var(--metal-light) 78%,
+      var(--metal-dark) 90%,
+      var(--metal-light)
+    );
+    box-shadow:
+      0 3px 0 var(--metal-dark),
+      8px 12px 18px -4px rgba(20, 10, 4, 0.6);
+    cursor: default;
+  }
+
+  .tt-platter::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: repeating-radial-gradient(circle, rgba(255, 255, 255, 0.1) 0 1px, rgba(0, 0, 0, 0.05) 1px 2px);
+  }
+
+  .tt-platter:focus-visible {
+    outline: 3px solid var(--color-amber);
+    outline-offset: 4px;
+  }
+
+  .tt-platter[data-tappable="true"] {
+    cursor: pointer;
+  }
+
+  /* The well inside the rim: black rubber mat (it turns with the platter) and the disc */
+  .tt-well {
+    position: absolute;
+    inset: 3.5%;
+    border-radius: 50%;
+  }
+
+  .tt-mat {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      repeating-radial-gradient(circle, var(--color-mat-texture) 0 1px, transparent 1px 3px),
+      var(--color-mat);
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+      inset 0 3px 8px rgba(0, 0, 0, 0.7);
+  }
+
+  .tt-disc {
+    position: absolute;
+    inset: 2.5%;
+    border-radius: 50%;
+  }
+
+  .tt-spindle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2.6%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--metal-light), var(--metal-dark));
+    box-shadow: 1px 2px 2px rgba(0, 0, 0, 0.6);
+  }
+
+  /* The tonearm's shadow falls on the plate, away from the top-left light */
+  .tt-arm {
+    position: absolute;
+    pointer-events: none;
+    filter: drop-shadow(5px 8px 4px rgba(20, 10, 4, 0.45));
+  }
+
+  /* HUM / TALK: speed-style keys on the plinth's front face, each with an indicator light */
+  .tt-keys {
+    position: absolute;
+    left: 5%;
+    top: 14%;
+    bottom: 14%;
+    display: flex;
+    gap: calc(var(--plate-w) * 0.025);
+  }
+
+  .tt-key {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.55em;
+    min-width: calc(var(--plate-w) * 0.14);
+    padding: 0 0.9em;
+    border-radius: 5px;
+    font-size: max(11px, calc(var(--plate-w) * 0.024));
+    font-weight: 650;
+    letter-spacing: 0.14em;
+    color: var(--color-ink);
+    background: linear-gradient(180deg, var(--color-key), var(--color-key-pressed));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 2px 0 rgba(20, 10, 4, 0.55),
+      0 3px 6px rgba(20, 10, 4, 0.4);
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  /* at least a 44px hit area, even though the key is drawn smaller */
+  .tt-key::before {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+
+  .tt-key[aria-checked="true"] {
+    transform: translateY(2px);
+    background: linear-gradient(180deg, var(--color-key-pressed), var(--color-key));
+    box-shadow:
+      inset 0 1px 3px rgba(20, 10, 4, 0.35),
+      0 0 0 rgba(20, 10, 4, 0.55);
+  }
+
+  .tt-key:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
+  .tt-led {
+    width: 0.62em;
+    height: 0.62em;
+    border-radius: 50%;
+    background: var(--color-led-off);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.5);
+  }
+
+  .tt-key[aria-checked="true"] .tt-led {
+    background: var(--color-amber);
+    box-shadow:
+      0 0 6px 1px var(--color-amber-glow),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Narrow screens: a smaller turntable seen more from above */
+@media (max-width: 900px) {
+  :root {
+    --plate-w: clamp(260px, 72vw, 520px);
+    --tt-tilt: 38deg;
+    --tt-yaw: 14deg;
+  }
+}

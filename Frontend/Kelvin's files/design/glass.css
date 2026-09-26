@@ -1,22 +1,24 @@
 /*
- * The glass material. A clear base with the table blurred and warmed behind it, a 1px rim
- * that is brightest along the top (light from above), a faint dark inner edge at the bottom
- * for thickness, a specular highlight near the top-left and a soft lifted shadow.
- * Hero surfaces in Chromium (GlassPanel) swap the CSS blur for liquid-glass-react's
- * refraction and keep every other layer.
+ * The glass material, from the anatomy of Apple's Liquid Glass. Every value is a token.
+ *
+ *   the element     light blur + brightness on what is behind, a soft lifted shadow
+ *   ::before        the committed white tint (a second layer for glass inside glass) and the
+ *                   inset thickness lines: bright along the top, faint along the bottom
+ *   ::after         the lit rim: a gradient masked down to a ring, bright where light catches
+ *                   the edge and nearly gone along the sides (never a uniform border)
+ *
+ * The disc on the turntable can't use backdrop-filter (it sits inside the tilted 3D plate), so
+ * .disc-glass fakes the same material over the known black mat.
  */
 @layer components {
   .glass-surface {
     position: relative;
     z-index: 0;
-    border-radius: var(--radius-panel);
-    background-color: var(--color-glass-fill);
-    -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(var(--saturate-glass));
-    backdrop-filter: blur(var(--blur-glass)) saturate(var(--saturate-glass));
-    box-shadow: var(--shadow-glass);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) brightness(var(--glass-brightness));
+    backdrop-filter: blur(var(--glass-blur)) brightness(var(--glass-brightness));
+    box-shadow: var(--glass-shadow);
   }
 
-  /* Specular highlight near the top-left, and the darker inner edge along the bottom */
   .glass-surface::before {
     content: "";
     position: absolute;
@@ -24,22 +26,29 @@
     z-index: 1;
     border-radius: inherit;
     pointer-events: none;
-    background: radial-gradient(90% 70% at 14% 0%, var(--color-glass-specular), transparent 55%);
+    background-color: var(--glass-tint);
     box-shadow:
-      inset 0 -1px 0 var(--color-glass-edge),
-      inset 0 -14px 22px -18px var(--color-glass-edge);
+      inset 0 1px 0 var(--glass-inset-top),
+      inset 0 -1px 0 var(--glass-inset-bottom);
+    transition: background-color var(--duration-fade) ease;
   }
 
-  /* 1px rim: brightest along the top edge, fading downward */
-  .glass-surface::after {
+  .glass-surface::after,
+  .disc-glass::after {
     content: "";
     position: absolute;
     inset: 0;
     z-index: 1;
-    padding: 1px;
+    padding: var(--glass-rim-width);
     border-radius: inherit;
     pointer-events: none;
-    background: linear-gradient(180deg, var(--color-glass-rim), var(--color-glass-rim-soft) 38%, transparent 80%);
+    background: linear-gradient(
+      135deg,
+      var(--glass-rim-bright) 0%,
+      var(--glass-rim-dim) var(--glass-rim-fade-start),
+      var(--glass-rim-dim) var(--glass-rim-fade-end),
+      var(--glass-rim-bright) 100%
+    );
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -50,82 +59,152 @@
     mask-composite: exclude;
   }
 
+  /* Glass inside glass (buttons in a message or panel) gets a second, lighter layer of tint */
+  .glass-surface .glass-surface::before {
+    background-image: linear-gradient(var(--glass-tint-nested) 0 0);
+  }
+
   .glass-content {
     position: relative;
     z-index: 2;
   }
 
-  /* Hero surfaces in Chromium: liquid-glass-react refracts the table underneath */
-  .glass-surface[data-refraction="on"] {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
-  .glass-refraction {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  /* liquid-glass-react blends its rim layers with mix-blend-mode. In Chrome that isolates the
-     surrounding stacking context, which cuts the refraction layer's backdrop-filter off from
-     the table, so the glass would show the wood unblurred. Normal blending keeps it working. */
-  .glass-refraction > * {
-    mix-blend-mode: normal !important;
-  }
-
-  .glass-disc {
-    border-radius: 50%;
-  }
-
-  .glass-disc > .glass-content {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
+  .glass-panel {
+    border-radius: var(--radius-panel);
   }
 
   .glass-message {
     border-radius: var(--radius-message);
   }
 
-  /* Small controls: chips, toggles and buttons */
+  /* Small controls: buttons and pills */
   .glass-control {
     border-radius: var(--radius-pill);
-    box-shadow: var(--shadow-glass-small);
-    transition: background-color var(--duration-fade) ease;
-  }
-
-  .glass-segment {
-    position: relative;
-    border-radius: var(--radius-pill);
-    color: var(--color-ink-muted);
-    transition: color var(--duration-fade) ease;
-  }
-
-  .glass-control[aria-pressed="true"] {
-    background-color: var(--color-glass-selected);
-  }
-
-  .glass-control[aria-pressed="true"]::after {
-    background: linear-gradient(180deg, var(--color-glass-selected-rim), var(--color-glass-rim-soft) 45%, transparent 85%);
+    box-shadow: var(--glass-shadow-small);
   }
 
   @media (hover: hover) {
-    .glass-control:not([aria-pressed="true"]):hover {
-      background-color: var(--color-glass-fill-hover);
-    }
-
-    .glass-segment:hover {
-      color: var(--color-ink);
+    button.glass-control:hover {
+      --glass-tint: var(--glass-tint-hover);
     }
   }
 
-  .glass-control:focus-visible,
-  .glass-segment:focus-visible {
+  .glass-control:focus-visible {
     outline: 2px solid var(--color-amber);
     outline-offset: 3px;
+  }
+
+  /*
+   * The faked glass disc: a thick round lens over the black mat. A faint tint, reflections that
+   * stay still while the record turns underneath, a lighter thickness ring just inside the edge,
+   * and a conic lit rim (highlights at 10 and 4 o'clock). It fades away once the record is vinyl.
+   */
+  .disc-glass {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    transition: opacity var(--duration-press-vinyl) ease;
+  }
+
+  .disc-glass[data-hidden="true"] {
+    opacity: 0;
+  }
+
+  .disc-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(18% 10% at 30% 22%, var(--glass-disc-specular), transparent 70%),
+      linear-gradient(128deg, var(--glass-disc-reflection) 0%, transparent 34%, transparent 72%, var(--glass-disc-reflection) 96%),
+      radial-gradient(
+        circle closest-side,
+        transparent calc(100% - var(--glass-thickness-inset) - 2px),
+        var(--glass-thickness-ring) calc(100% - var(--glass-thickness-inset) - 0.75px),
+        var(--glass-thickness-ring) calc(100% - var(--glass-thickness-inset) + 0.75px),
+        transparent calc(100% - var(--glass-thickness-inset) + 2px)
+      ),
+      var(--glass-disc-tint);
+  }
+
+  .disc-glass::after {
+    padding: var(--glass-rim-width-disc);
+    background: conic-gradient(
+      from 300deg,
+      var(--glass-rim-bright) 0deg,
+      var(--glass-rim-dim) var(--glass-rim-disc-spread),
+      var(--glass-rim-dim) calc(180deg - var(--glass-rim-disc-spread)),
+      var(--glass-rim-bright) 180deg,
+      var(--glass-rim-dim) calc(180deg + var(--glass-rim-disc-spread)),
+      var(--glass-rim-dim) calc(360deg - var(--glass-rim-disc-spread)),
+      var(--glass-rim-bright) 360deg
+    );
+  }
+
+  /*
+   * Glass fader: a native range input (keyboard and screen readers work as usual), drawn as a
+   * glass groove with a glass knob.
+   */
+  .glass-fader {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 32px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .glass-fader:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 4px;
+    border-radius: var(--radius-pill);
+  }
+
+  .glass-fader::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, rgba(120, 100, 80, 0.16), rgba(255, 255, 255, 0.5));
+    box-shadow: inset 0 1px 2px rgba(40, 28, 18, 0.18), 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .glass-fader::-moz-range-track {
+    height: 8px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, rgba(120, 100, 80, 0.16), rgba(255, 255, 255, 0.5));
+    box-shadow: inset 0 1px 2px rgba(40, 28, 18, 0.18), 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .glass-fader::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 30px;
+    height: 30px;
+    margin-top: -11px;
+    border-radius: 50%;
+    border: 0;
+    background:
+      radial-gradient(60% 50% at 35% 28%, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0) 70%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(232, 226, 218, 0.9));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      inset 0 -1px 0 rgba(120, 100, 80, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.8),
+      0 4px 10px -2px rgba(40, 28, 18, 0.3);
+  }
+
+  .glass-fader::-moz-range-thumb {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 0;
+    background:
+      radial-gradient(60% 50% at 35% 28%, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0) 70%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(232, 226, 218, 0.9));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      inset 0 -1px 0 rgba(120, 100, 80, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.8),
+      0 4px 10px -2px rgba(40, 28, 18, 0.3);
   }
 }

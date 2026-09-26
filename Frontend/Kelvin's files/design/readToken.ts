@@ -1,6 +1,6 @@
 /*
  * Reads design tokens from tokens.css at runtime, for code that can't use CSS directly:
- * canvas drawing, motion springs and liquid-glass-react props.
+ * canvas drawing, motion springs and animation timings.
  */
 
 type TokenName = `--${string}`

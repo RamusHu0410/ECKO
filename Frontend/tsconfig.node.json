@@ -1,17 +1,14 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2023",
     "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
+      "ES2023"
     ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
-    "jsx": "react-jsx",
     "types": [
-      "vite/client"
+      "node"
     ],
     "noEmit": true,
     "isolatedModules": true,
@@ -19,11 +16,9 @@
     "skipLibCheck": true,
     "strict": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUnusedParameters": true
   },
   "include": [
-    "Kelvin's files"
+    "vite.config.ts"
   ]
 }
