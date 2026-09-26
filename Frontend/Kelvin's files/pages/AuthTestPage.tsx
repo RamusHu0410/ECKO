@@ -28,6 +28,9 @@ export default function AuthTestPage() {
       // A test page: keep the session across reloads. (Brave and Safari block the hidden iframe
       // the SDK would otherwise use to restore it.)
       cacheLocation="localstorage"
+      // Once Auth0 sends the user back here and the login is complete, go on to the community page.
+      // Auth0 still returns to /auth-test (the allowed callback URL); the app loads fresh from there.
+      onRedirectCallback={() => window.location.replace('/community')}
     >
       <AuthTest configured />
     </Auth0Provider>
