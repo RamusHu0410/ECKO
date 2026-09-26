@@ -3,7 +3,10 @@ import time
 from math import isfinite
 
 import numpy as np
-from flask import Blueprint, jsonify, current_app, request, has_app_context
+from flask import Blueprint, jsonify, current_app, request, has_app_context, send_from_directory
+from werkzeug.utils import secure_filename
+
+from accompanist.generate import generate_accompaniment
 
 from ..audio.handoff import sensible_tempo, to_engine_melody
 from ..audio.intake import AudioInputError, unique_upload_name
@@ -74,6 +77,9 @@ def upload_wav():
         warnings        problems with the recording, in words for the user
         clean_filename  the filtered copy of the recording
         audio_analysis  the full analysis (pitch track, segments, ...)
+        accompaniment   the accompanist's song for this hum: status, key, mode, progression,
+                        wav_filename, and url (GET it to play the WAV; /api/song/... from the
+                        browser). On failure: status "failed" + error; the upload still succeeds.
     400 → the file isn't a usable recording: {error}
     500 → the analysis itself failed: {error, details}
     """
@@ -120,6 +126,8 @@ def upload_wav():
         "upload %s: %d notes, %.1f BPM, %s %s, %+d cents, warnings=%s",
         filename, len(hum["melody"]), tempo, hum["key"], hum["mode"], hum["tuning_cents"], hum["warnings"],
     )
+    engine_melody = to_engine_melody(hum["melody"], tempo)
+    accompaniment = _compose(engine_melody, tempo, filename)
     response_data = {
         "status": "success",
         "message": "File uploaded and processed successfully",
@@ -128,7 +136,8 @@ def upload_wav():
         "size_bytes": file_size,
         "size_mb": round(file_size / (1024 * 1024), 2),
         "saved_path": filepath,
-        "melody": to_engine_melody(hum["melody"], tempo),
+        "melody": engine_melody,
+        "accompaniment": accompaniment,
         "tempo": tempo,
         "key": hum["key"],
         "mode": hum["mode"],
@@ -142,6 +151,61 @@ def upload_wav():
     # Audio libraries return NumPy scalars (notably ``numpy.bool`` from pitch voicing), which
     # Flask's JSON provider can't serialize.
     return jsonify(_json_safe(response_data)), 201
+
+
+def _compose(engine_melody, tempo, upload_name):
+    """Run the accompanist on the hum and save its MIDI + WAV in RECORDINGS_FOLDER.
+
+    Never fails the upload: if composing or rendering goes wrong, the error is reported in the
+    returned dict and the hum's analysis is still sent back.
+    """
+    if not engine_melody:
+        return {"status": "skipped", "error": "No notes were found in the hum."}
+    folder = current_app.config["RECORDINGS_FOLDER"]
+    os.makedirs(folder, exist_ok=True)
+    stem = os.path.splitext(upload_name)[0] + "_accompaniment"
+    midi_path = os.path.join(folder, stem + ".mid")
+    wav_path = os.path.join(folder, stem + ".wav")
+    started = time.time()
+    try:
+        result = generate_accompaniment(
+            {"melody": engine_melody, "tempo": tempo},
+            midi_path,
+            tempo=tempo,
+            render_wav=True,
+            wav_path=wav_path,
+        )
+    except Exception as exc:  # noqa: BLE001 - report it, keep the upload
+        current_app.logger.exception("Accompaniment generation failed")
+        return {"status": "failed", "error": str(exc)}
+
+    info = {
+        "status": "success" if result.wav_path else "midi_only",
+        "key": result.key,
+        "mode": result.mode,
+        "progression": result.progression_symbols,
+        "midi_filename": os.path.basename(result.midi_path),
+        "wav_filename": os.path.basename(result.wav_path) if result.wav_path else None,
+        # the browser calls /api/song/<name>; Vite forwards it here as /song/<name>
+        "url": f"/song/{os.path.basename(result.wav_path)}" if result.wav_path else None,
+        "warnings": result.warnings,
+        "time_seconds": round(time.time() - started, 3),
+    }
+    current_app.logger.info("accompaniment for %s: %s %s, %s", upload_name, info["key"], info["mode"], info["progression"])
+    return info
+
+
+@bp.route("/song/<path:name>", methods=["GET"])
+def get_song(name):
+    """Stream a generated accompaniment WAV (or MIDI) saved by /upload."""
+    safe = secure_filename(name)
+    if not safe or safe != name or not safe.endswith(("_accompaniment.wav", "_accompaniment.mid")):
+        return jsonify({"error": "Unknown song"}), 404
+    folder = os.path.abspath(current_app.config["RECORDINGS_FOLDER"])
+    if not os.path.isfile(os.path.join(folder, safe)):
+        return jsonify({"error": "Unknown song"}), 404
+    mimetype = "audio/wav" if safe.endswith(".wav") else "audio/midi"
+    return send_from_directory(folder, safe, mimetype=mimetype)
 
 
 def _discard(path):

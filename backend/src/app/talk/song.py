@@ -1,5 +1,9 @@
 """Makes the song from the user's own hum, with the song settings translated for the engine.
 
+The accompanist engine writes the song: its tune and accompaniment tracks, in its own style,
+voicing and instrument (the lead, synth by default), are kept exactly as it renders them.
+Talk mode only adds on top (background parts, the lead's level, energy).
+
 The hum is the WAV that POST /upload saved. analyze_audio_file turns it into notes (MIDI pitch,
 start and length in seconds) plus a tempo; app.audio.handoff turns those into beats on a
 sixteenth-note grid, the way the accompanist engine counts. This file adds the song settings:
@@ -171,6 +175,8 @@ def engine_request(analysis: dict, settings: SongSettings) -> dict:
         # the engine's "hz" holds MIDI note numbers; the rhythm is counted at the hum's own tempo
         "melody": to_engine_melody(analysis["melody"], hum_tempo, shift=shift),
         "tempo": round(hum_tempo * (0.5 + settings.speed), 1),
+        # the engine renders its own tracks with the lead's instrument; nothing re-dresses them later
+        "instrument": PROGRAMS.get(_lead(settings).name, PROGRAMS["synth"]),
     }
     if settings.style:
         request["style"] = ENGINE_STYLE_FOR.get(settings.style, UNKNOWN_STYLE)
@@ -181,18 +187,23 @@ def engine_request(analysis: dict, settings: SongSettings) -> dict:
     return request
 
 
+def _lead(settings: SongSettings):
+    return next((part for part in settings.instruments if part.role == "lead"), DEFAULT_LEAD)
+
+
 def arrange(midi_path: str, chords: list, settings: SongSettings, tempo: float) -> None:
-    """Gives the engine's two tracks (the tune and the chords) to the lead, and adds a track for
-    every other instrument, playing only in its section. Then shapes the energy of each half."""
+    """Keeps the engine's own tracks (tune and accompaniment) exactly as it wrote them, notes and
+    instruments alike, and adds the talk-mode extras on top: the lead's level, a track for every
+    background instrument (only in its section), and the energy of each half. At the default
+    settings every extra is a no-op, so the song is the accompanist's output."""
     song = pretty_midi.PrettyMIDI(midi_path)
-    lead = next((part for part in settings.instruments if part.role == "lead"), DEFAULT_LEAD)
+    lead = _lead(settings)
     for track in song.instruments:
-        track.program = PROGRAMS.get(lead.name, PROGRAMS["synth"])
-        _set_volume(track, LEAD_VOLUME[lead.level])
+        _set_volume(track, LEAD_VOLUME[lead.level])  # normal = FluidSynth's default, so unchanged
     half = song.get_end_time() / 2
     seconds_per_beat = 60 / tempo
     for part in settings.instruments:
-        if part.role == "background" and part.name in PROGRAMS:
+        if part.role == "background" and part.name in PROGRAMS and chords:
             track = _beat(chords, seconds_per_beat) if part.name == DRUMS else _held_chords(part.name, chords, seconds_per_beat)
             track.notes = [note for note in track.notes if _plays(part.section, note.start, half)]
             _set_volume(track, BACKGROUND_VOLUME[part.level])
