@@ -1,0 +1,72 @@
+/*
+ * Design tokens: every color, radius, blur, shadow, size and motion setting lives here.
+ * `static` keeps all of them as CSS variables even when no Tailwind class uses them,
+ * because glass.css, the canvas drawing and the motion springs read them directly.
+ * Canvas colors use rgba() commas so every browser's canvas can parse them.
+ */
+@theme static {
+  /* Type */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+
+  /* Palette: warm near-black text, warm gray secondary, one amber accent */
+  --color-ink: #2a2420;
+  --color-ink-muted: #8a8074;
+  --color-amber: #e8a94c;
+
+  /* Wood table */
+  --color-wood: #d9c3a2;
+  --color-vignette: rgba(62, 38, 18, 0.22);
+  --wood-tile-size: 1024px;
+
+  /* Glass material */
+  --color-glass-fill: rgba(255, 255, 255, 0.14);
+  --color-glass-fill-hover: rgba(255, 255, 255, 0.2);
+  --color-glass-rim: rgba(255, 255, 255, 0.9);
+  --color-glass-rim-soft: rgba(255, 255, 255, 0.24);
+  --color-glass-specular: rgba(255, 255, 255, 0.36);
+  --color-glass-edge: rgba(88, 56, 26, 0.16);
+  --color-glass-selected: rgba(232, 169, 76, 0.3);
+  --color-glass-selected-rim: rgba(255, 232, 196, 0.95);
+  --blur-glass: 24px;
+  --saturate-glass: 160%;
+  --radius-panel: 32px;
+  --radius-message: 24px;
+  --radius-pill: 999px;
+  --shadow-glass:
+    0 1px 2px rgba(64, 40, 18, 0.08), 0 14px 28px -12px rgba(64, 40, 18, 0.22),
+    0 38px 76px -30px rgba(64, 40, 18, 0.34);
+  --shadow-glass-small: 0 1px 2px rgba(64, 40, 18, 0.1), 0 8px 18px -10px rgba(64, 40, 18, 0.3);
+
+  /* Liquid-glass refraction on hero surfaces (Chromium only): subtle, not wobbly */
+  --glass-displacement: 40;
+  --glass-aberration: 1.2;
+  --glass-elasticity: 0.04;
+
+  /* Recording disc and vinyl */
+  --size-disc: clamp(248px, 78vw, 320px);
+  --vinyl-label-size: 31%;
+  --color-disc-fill: rgba(255, 249, 238, 0.4);
+  --color-disc-ink: rgba(42, 36, 32, 0.64);
+  --color-disc-glow: rgba(255, 255, 255, 0.75);
+  --color-vinyl: #121110;
+  --color-vinyl-lip: #24211e;
+  --color-vinyl-groove: rgba(255, 255, 255, 0.05);
+  --color-vinyl-trace: rgba(255, 240, 220, 0.12);
+  --color-label-ink: rgba(42, 36, 32, 0.62);
+  --color-sheen: rgba(255, 255, 255, 0.13);
+  --color-sheen-soft: rgba(255, 255, 255, 0.1);
+
+  /* Motion */
+  --spring-press-scale: 0.96;
+  --spring-press-stiffness: 600;
+  --spring-press-damping: 32;
+  --duration-fade: 400ms;
+  --duration-press-vinyl: 1200ms;
+  --duration-spin-up: 1s;
+  --duration-rotation: 1.8s; /* 33⅓ rpm */
+  /* Turntable motor: speed rises linearly, so the start curve is a quadratic ease-in.
+     It covers 180deg × spin-up ÷ rotation, which lands exactly on the steady speed. */
+  --ease-motor-start: cubic-bezier(0.333, 0, 0.667, 0.333);
+  --spin-up-angle: 100deg;
+}
