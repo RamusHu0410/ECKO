@@ -31,6 +31,13 @@ try:
 except ImportError:
     SOUNDFILE_avaliable = False
 
+try:
+    from scipy.signal import butter, sosfiltfilt
+
+    SCIPY_SIGNAL_avaliable = True
+except ImportError:
+    SCIPY_SIGNAL_avaliable = False
+
 # Configure logging to output to console
 logging.basicConfig(
     level=logging.INFO,
@@ -204,6 +211,66 @@ class AudioProcessor:
                 self._debug_print(f"WARNING: {msg}", "WARNING")
 
         return audio, sr
+
+    def clean_audio(
+        self,
+        audio: np.ndarray,
+        sr: int,
+        fmin: float = 80.0,
+        fmax: float = 1200.0,
+        top_db: float = 30.0,
+    ) -> np.ndarray:
+        """
+        Clean up a mono audio signal so individual notes come through clearly.
+
+        Applies a bandpass filter around the expected note range (to strip
+        rumble/hum below fmin and hiss above fmax), trims leading/trailing
+        silence, and peak-normalizes the result.
+
+        Args:
+            audio: Mono audio signal
+            sr: Sample rate
+            fmin: Lower cutoff frequency in Hz
+            fmax: Upper cutoff frequency in Hz
+            top_db: Silence threshold (dB) used when trimming edges
+
+        Returns:
+            Cleaned mono float32 audio signal
+        """
+        self._debug_print(
+            f"Cleaning audio (bandpass {fmin}-{fmax}Hz, trim top_db={top_db})",
+            "PROCESS",
+        )
+        cleaned = audio.astype(np.float32)
+
+        if SCIPY_SIGNAL_avaliable and len(cleaned) > 0:
+            nyquist = sr / 2.0
+            low = max(fmin / nyquist, 1e-4)
+            high = min(fmax / nyquist, 0.999)
+            if low < high:
+                sos = butter(4, [low, high], btype="bandpass", output="sos")
+                cleaned = sosfiltfilt(sos, cleaned).astype(np.float32)
+            else:
+                self._debug_print(
+                    "Skipping bandpass filter: invalid cutoff range", "WARNING"
+                )
+        else:
+            self._debug_print(
+                "scipy.signal not available, skipping bandpass filter", "WARNING"
+            )
+
+        if LIBROSA_avaliable and len(cleaned) > 0:
+            cleaned, _ = librosa.effects.trim(cleaned, top_db=top_db)
+
+        peak = float(np.max(np.abs(cleaned))) if len(cleaned) > 0 else 0.0
+        if peak > 0:
+            cleaned = (cleaned / peak).astype(np.float32)
+
+        self._debug_print(
+            f"Cleaned audio: {len(cleaned)} samples, peak before norm={peak:.4f}",
+            "SUCCESS",
+        )
+        return cleaned
 
     def get_audio_info(self, filepath: str) -> Dict[str, Any]:
         """
@@ -950,6 +1017,56 @@ def extract_notes(
                 f"dur={n['duration']:.2f}s vol={n['volume']:.4f} pitch={n['pitch_hz']:.1f}Hz"
             )
     return notes
+
+
+def clean_wav(
+    filepath: str,
+    output_path: Optional[str] = None,
+    target_sr: int = 22050,
+    fmin: float = 80.0,
+    fmax: float = 1200.0,
+    top_db: float = 30.0,
+    debug: bool = False,
+) -> str:
+    """
+    Filter a WAV file into a cleaner version so its notes are easier to read.
+
+    Bandpass-filters out rumble/hiss outside the note range, trims silence
+    from the edges, and peak-normalizes the audio, then writes the result
+    to ``output_path`` (defaults to ``<name>_clean.wav`` next to the input).
+
+    Args:
+        filepath: Path to the input WAV file
+        output_path: Where to write the cleaned WAV (optional)
+        target_sr: Sample rate to process/write at
+        fmin: Lower cutoff frequency in Hz
+        fmax: Upper cutoff frequency in Hz
+        top_db: Silence threshold (dB) used when trimming edges
+        debug: Enable debug output
+
+    Returns:
+        Path to the cleaned WAV file
+    """
+    processor = AudioProcessor(target_sr=target_sr, debug=debug)
+    audio, sr = processor.load_wav(filepath)
+    cleaned = processor.clean_audio(audio, sr, fmin=fmin, fmax=fmax, top_db=top_db)
+
+    if output_path is None:
+        base, ext = os.path.splitext(filepath)
+        output_path = f"{base}_clean{ext or '.wav'}"
+
+    if SOUNDFILE_avaliable:
+        sf.write(output_path, cleaned, sr)
+    elif SCIPY_avaliable:
+        wavfile.write(output_path, sr, (cleaned * 32767).astype(np.int16))
+    else:
+        raise RuntimeError(
+            "No audio library available to write WAV. Install soundfile or scipy."
+        )
+
+    if debug:
+        console_print(f"Wrote cleaned WAV to: {output_path}", "SUCCESS")
+    return output_path
 
 
 # Backward compatibility
