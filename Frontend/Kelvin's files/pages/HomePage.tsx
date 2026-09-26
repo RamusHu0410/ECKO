@@ -35,19 +35,15 @@ import {
 export default function HomePage() {
   const reducedMotion = useReducedMotion() ?? false
   const { settings, update } = useSongSettings()
-<<<<<<< HEAD
-  const { phase, micProblem, uploadFailure, accompanimentFailure } = session
-=======
   const session = useRecordSession(reducedMotion, settings)
   const { mode, setMode } = useMode()
-  const { phase, micProblem, uploadFailure } = session
+  const { phase, micProblem, uploadFailure, accompanimentFailure } = session
   const talk = useTalk({ settings, update, remakeSong: session.remakeSong })
   const talking = mode === 'talk' && phase === 'ready'
   const canTalk = talking && !talk.busy
 
   // the song plays while the record turns, and waits while someone talks to it
   useSongPlayer(session.song, phase === 'ready' && !session.paused && !talk.busy)
->>>>>>> fe663df (bugs fixed, elevenlabs)
 
   const hold = useHoldToRecord({
     enabled: mode === 'talk' ? canTalk : phase === 'idle' || phase === 'recording',
