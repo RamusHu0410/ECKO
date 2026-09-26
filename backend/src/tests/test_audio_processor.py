@@ -40,11 +40,6 @@ def test_audio_processor_init_with_custom_params():
     assert processor.frame_length == 4096
 
 
-def test_audio_processor_check_dependencies():
-    processor = AudioProcessor()
-    processor._check_dependencies()
-
-
 def test_estimate_key_and_mode():
     audio = np.zeros(22050)
     key, mode = _estimate_key_and_mode(audio, 22050)

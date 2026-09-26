@@ -4,39 +4,12 @@ import numpy as np
 from typing import Tuple, Optional, Dict, Any, List
 import logging
 import time
-from accompanist.generate import generate_accompaniment
 
-# Try to import audio processing libraries
-try:
-    import librosa
-    import librosa.feature
-    import librosa.onset
-    import librosa.beat
-
-    LIBROSA_avaliable = True
-except ImportError:
-    LIBROSA_avaliable = False
-
-try:
-    from scipy.io import wavfile
-
-    SCIPY_avaliable = True
-except ImportError:
-    SCIPY_avaliable = False
-
-try:
-    import soundfile as sf
-
-    SOUNDFILE_avaliable = True
-except ImportError:
-    SOUNDFILE_avaliable = False
-
-try:
-    from scipy.signal import butter, sosfiltfilt
-
-    SCIPY_SIGNAL_avaliable = True
-except ImportError:
-    SCIPY_SIGNAL_avaliable = False
+import librosa
+import librosa.feature
+import librosa.beat
+import soundfile as sf
+from scipy.signal import butter, sosfiltfilt
 
 # Configure logging to output to console
 logging.basicConfig(
@@ -62,7 +35,12 @@ def console_print(message: str, level: str = "INFO"):
 
 
 class AudioProcessor:
-    """Handles loading and processing of WAV audio files."""
+    """Handles loading and processing of WAV audio files.
+
+    Uses librosa for analysis (pitch, tempo, key, spectral features),
+    soundfile for precise file I/O, and scipy.signal for the bandpass
+    filter used by ``clean_audio``. All three are required dependencies.
+    """
 
     def __init__(
         self,
@@ -84,33 +62,12 @@ class AudioProcessor:
         self.hop_length = hop_length
         self.frame_length = frame_length
         self.debug = debug
-        self._check_dependencies()
 
     def _debug_print(self, message: str, level: str = "DEBUG"):
         """Print debug message if debug mode is enabled."""
         if self.debug:
             console_print(message, level)
             logger.debug(message)
-
-    def _check_dependencies(self):
-        """Check which audio libraries are available."""
-        available = []
-        if LIBROSA_avaliable:
-            available.append("librosa")
-        if SCIPY_avaliable:
-            available.append("scipy")
-        if SOUNDFILE_avaliable:
-            available.append("soundfile")
-
-        if not available:
-            msg = "No audio processing libraries found. Install librosa, scipy, or soundfile."
-            logger.warning(msg)
-            console_print(msg, "WARNING")
-        else:
-            msg = f"Audio processing libraries available: {', '.join(available)}"
-            logger.info(msg)
-            if self.debug:
-                console_print(msg, "SUCCESS")
 
     def load_wav(self, filepath: str) -> Tuple[np.ndarray, int]:
         """
@@ -121,7 +78,8 @@ class AudioProcessor:
 
         Returns:
             Tuple of (audio_data, sample_rate)
-            audio_data is mono float32 array normalized to [-1, 1]
+            audio_data is mono float32 array normalized to [-1, 1],
+            resampled to ``target_sr``.
         """
         self._debug_print(f"Loading WAV file: {filepath}", "PROCESS")
         start_time = time.time()
@@ -131,17 +89,8 @@ class AudioProcessor:
             self._debug_print(f"ERROR: {error_msg}", "ERROR")
             raise FileNotFoundError(error_msg)
 
-        # Try different libraries in order of preference
-        if LIBROSA_avaliable:
-            audio, sr = self._load_with_librosa(filepath)
-        elif SOUNDFILE_avaliable:
-            audio, sr = self._load_with_soundfile(filepath)
-        elif SCIPY_avaliable:
-            audio, sr = self._load_with_scipy(filepath)
-        else:
-            error_msg = "No audio processing library available. Install librosa, soundfile, or scipy."
-            self._debug_print(f"ERROR: {error_msg}", "ERROR")
-            raise RuntimeError(error_msg)
+        audio, sr = librosa.load(filepath, sr=self.target_sr, mono=True)
+        audio = audio.astype(np.float32)
 
         load_time = time.time() - start_time
         self._debug_print(
@@ -151,64 +100,6 @@ class AudioProcessor:
         self._debug_print(
             f"Audio stats: min={np.min(audio):.4f}, max={np.max(audio):.4f}, mean={np.mean(audio):.4f}, std={np.std(audio):.4f}"
         )
-
-        return audio, sr
-
-    def _load_with_librosa(self, filepath: str) -> Tuple[np.ndarray, int]:
-        """Load using librosa (resamples to target_sr)."""
-        self._debug_print("Loading with librosa...")
-        audio, sr = librosa.load(filepath, sr=self.target_sr, mono=True)
-        return audio.astype(np.float32), sr
-
-    def _load_with_soundfile(self, filepath: str) -> Tuple[np.ndarray, int]:
-        """Load using soundfile."""
-        self._debug_print("Loading with soundfile...")
-        audio, sr = sf.read(filepath, dtype="float32")
-        # Convert to mono if stereo
-        if len(audio.shape) > 1:
-            self._debug_print(f"Converting stereo to mono: {audio.shape} -> ", end="")
-            audio = np.mean(audio, axis=1)
-            self._debug_print(f"{audio.shape}")
-        # Resample if needed
-        if sr != self.target_sr and LIBROSA_avaliable:
-            self._debug_print(f"Resampling from {sr}Hz to {self.target_sr}Hz")
-            audio = librosa.resample(audio, orig_sr=sr, target_sr=self.target_sr)
-            sr = self.target_sr
-        return audio, sr
-
-    def _load_with_scipy(self, filepath: str) -> Tuple[np.ndarray, int]:
-        """Load using scipy."""
-        self._debug_print("Loading with scipy...")
-        sr, audio = wavfile.read(filepath)
-        self._debug_print(
-            f"Raw audio: dtype={audio.dtype}, shape={audio.shape}, sr={sr}"
-        )
-        # Convert to float32 and normalize
-        if audio.dtype == np.int16:
-            audio = audio.astype(np.float32) / 32768.0
-        elif audio.dtype == np.int32:
-            audio = audio.astype(np.float32) / 2147483648.0
-        elif audio.dtype == np.uint8:
-            audio = (audio.astype(np.float32) - 128) / 128.0
-        else:
-            audio = audio.astype(np.float32)
-
-        # Convert to mono if stereo
-        if len(audio.shape) > 1:
-            self._debug_print(f"Converting stereo to mono: {audio.shape} -> ", end="")
-            audio = np.mean(audio, axis=1)
-            self._debug_print(f"{audio.shape}")
-
-        # Resample if needed (requires librosa)
-        if sr != self.target_sr:
-            if LIBROSA_avaliable:
-                self._debug_print(f"Resampling from {sr}Hz to {self.target_sr}Hz")
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=self.target_sr)
-                sr = self.target_sr
-            else:
-                msg = f"Sample rate mismatch: file is {sr}Hz, target is {self.target_sr}Hz. Install librosa for automatic resampling."
-                logger.warning(msg)
-                self._debug_print(f"WARNING: {msg}", "WARNING")
 
         return audio, sr
 
@@ -243,7 +134,7 @@ class AudioProcessor:
         )
         cleaned = audio.astype(np.float32)
 
-        if SCIPY_SIGNAL_avaliable and len(cleaned) > 0:
+        if len(cleaned) > 0:
             nyquist = sr / 2.0
             low = max(fmin / nyquist, 1e-4)
             high = min(fmax / nyquist, 0.999)
@@ -254,12 +145,7 @@ class AudioProcessor:
                 self._debug_print(
                     "Skipping bandpass filter: invalid cutoff range", "WARNING"
                 )
-        else:
-            self._debug_print(
-                "scipy.signal not available, skipping bandpass filter", "WARNING"
-            )
 
-        if LIBROSA_avaliable and len(cleaned) > 0:
             cleaned, _ = librosa.effects.trim(cleaned, top_db=top_db)
 
         peak = float(np.max(np.abs(cleaned))) if len(cleaned) > 0 else 0.0
@@ -281,48 +167,15 @@ class AudioProcessor:
         """
         self._debug_print(f"Getting audio info for: {filepath}")
 
-        if SOUNDFILE_avaliable:
-            info = sf.info(filepath)
-            result = {
-                "duration": info.duration,
-                "sample_rate": info.samplerate,
-                "channels": info.channels,
-                "frames": info.frames,
-                "format": info.format,
-                "subtype": info.subtype,
-            }
-        elif SCIPY_avaliable:
-            sr, audio = wavfile.read(filepath)
-            duration = len(audio) / sr
-            channels = 1 if len(audio.shape) == 1 else audio.shape[1]
-            result = {
-                "duration": duration,
-                "sample_rate": sr,
-                "channels": channels,
-                "frames": len(audio),
-                "format": "WAV",
-                "subtype": str(audio.dtype),
-            }
-        else:
-            # Fallback: load with librosa to get info
-            if LIBROSA_avaliable:
-                audio, sr = librosa.load(filepath, sr=None, mono=False)
-                duration = (
-                    len(audio) / sr if len(audio.shape) == 1 else audio.shape[1] / sr
-                )
-                channels = 1 if len(audio.shape) == 1 else audio.shape[0]
-                result = {
-                    "duration": duration,
-                    "sample_rate": sr,
-                    "channels": channels,
-                    "frames": len(audio) if len(audio.shape) == 1 else audio.shape[1],
-                    "format": "WAV",
-                    "subtype": "unknown",
-                }
-            else:
-                error_msg = "No audio library available to get file info"
-                self._debug_print(f"ERROR: {error_msg}", "ERROR")
-                raise RuntimeError(error_msg)
+        info = sf.info(filepath)
+        result = {
+            "duration": info.duration,
+            "sample_rate": info.samplerate,
+            "channels": info.channels,
+            "frames": info.frames,
+            "format": info.format,
+            "subtype": info.subtype,
+        }
 
         self._debug_print(f"Audio info: {result}")
         return result
@@ -347,13 +200,6 @@ class AudioProcessor:
             "PROCESS",
         )
 
-        if not LIBROSA_avaliable:
-            msg = "librosa not available, cannot detect sound segments"
-            logger.warning(msg)
-            self._debug_print(f"WARNING: {msg}", "WARNING")
-            return [{"start": 0.0, "end": len(audio) / sr, "duration": len(audio) / sr}]
-
-        # Use librosa's silence detection
         intervals = librosa.effects.split(
             audio,
             top_db=top_db,
@@ -412,12 +258,6 @@ class AudioProcessor:
         """
         self._debug_print(f"Extracting pitch (fmin={fmin}Hz, fmax={fmax}Hz)", "PROCESS")
 
-        if not LIBROSA_avaliable:
-            msg = "librosa not available, cannot extract pitch"
-            logger.warning(msg)
-            self._debug_print(f"WARNING: {msg}", "WARNING")
-            return {"frequencies": [], "times": [], "mean_hz": 0.0, "median_hz": 0.0}
-
         # Use PYIN for pitch detection
         self._debug_print("Running librosa.pyin...")
         start_time = time.time()
@@ -439,7 +279,6 @@ class AudioProcessor:
 
         # Filter only voiced frames
         voiced_f0 = f0[voiced_flag]
-        voiced_times = times[voiced_flag]
 
         self._debug_print(
             f"Total frames: {len(f0)}, Voiced frames: {np.sum(voiced_flag)} ({100 * np.sum(voiced_flag) / len(f0):.1f}%)"
@@ -482,27 +321,6 @@ class AudioProcessor:
             Dict with volume envelope information
         """
         self._debug_print("Extracting volume envelope (RMS energy)", "PROCESS")
-
-        if not LIBROSA_avaliable:
-            msg = "librosa not available, cannot extract volume envelope"
-            logger.warning(msg)
-            self._debug_print(f"WARNING: {msg}", "WARNING")
-            # Fallback: simple RMS per frame
-            frame_length = min(self.frame_length, len(audio))
-            hop_length = min(self.hop_length, frame_length // 4)
-            rms_values = []
-            times = []
-            for i in range(0, len(audio) - frame_length, hop_length):
-                frame = audio[i : i + frame_length]
-                rms = np.sqrt(np.mean(frame**2))
-                rms_values.append(float(rms))
-                times.append(float(i / sr))
-            return {
-                "rms_values": rms_values,
-                "times": times,
-                "mean_rms": float(np.mean(rms_values)) if rms_values else 0.0,
-                "max_rms": float(np.max(rms_values)) if rms_values else 0.0,
-            }
 
         # Compute RMS energy
         self._debug_print("Computing RMS with librosa.feature.rms...")
@@ -551,9 +369,6 @@ class AudioProcessor:
             Dict with spectral features
         """
         self._debug_print("Extracting spectral features", "PROCESS")
-
-        if not LIBROSA_avaliable:
-            return {}
 
         # Spectral centroid (brightness)
         self._debug_print("Computing spectral centroid...")
@@ -751,7 +566,7 @@ _MINOR_PROFILE = np.array(
 
 def _estimate_key_and_mode(audio: np.ndarray, sr: int) -> tuple[str, str]:
     """Estimate the tonic and mode from a chroma profile."""
-    if not LIBROSA_avaliable or audio.size == 0 or np.allclose(audio, 0):
+    if audio.size == 0 or np.allclose(audio, 0):
         return "C", "major"
 
     profile = np.mean(librosa.feature.chroma_cqt(y=audio, sr=sr), axis=1)
@@ -769,7 +584,7 @@ def _estimate_key_and_mode(audio: np.ndarray, sr: int) -> tuple[str, str]:
 
 def _estimate_tempo(audio: np.ndarray, sr: int) -> float:
     """Estimate tempo in BPM, returning 0.0 when it cannot be determined."""
-    if not LIBROSA_avaliable or audio.size == 0 or np.allclose(audio, 0):
+    if audio.size == 0 or np.allclose(audio, 0):
         return 0.0
     try:
         tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
@@ -801,9 +616,7 @@ def _build_melody(analysis: Dict[str, Any]) -> List[Dict[str, float]]:
                 {
                     # The accompaniment API historically calls this field ``hz``,
                     # but its public contract uses MIDI note numbers (60 = C4).
-                    "hz": round(float(librosa.hz_to_midi(frequency_hz)), 2)
-                    if LIBROSA_avaliable
-                    else round(69 + 12 * np.log2(frequency_hz / 440.0), 2),
+                    "hz": round(float(librosa.hz_to_midi(frequency_hz)), 2),
                     "start": round(start, 3),
                     "duration": round(float(segment["duration"]), 3),
                 }
@@ -1055,14 +868,7 @@ def clean_wav(
         base, ext = os.path.splitext(filepath)
         output_path = f"{base}_clean{ext or '.wav'}"
 
-    if SOUNDFILE_avaliable:
-        sf.write(output_path, cleaned, sr)
-    elif SCIPY_avaliable:
-        wavfile.write(output_path, sr, (cleaned * 32767).astype(np.int16))
-    else:
-        raise RuntimeError(
-            "No audio library available to write WAV. Install soundfile or scipy."
-        )
+    sf.write(output_path, cleaned, sr)
 
     if debug:
         console_print(f"Wrote cleaned WAV to: {output_path}", "SUCCESS")
