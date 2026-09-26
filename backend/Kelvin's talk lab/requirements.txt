@@ -1,0 +1,8 @@
+# The talk lab's own dependencies (separate from the main backend's pyproject)
+flask>=3.1
+python-dotenv>=1.1
+pydantic>=2.11
+elevenlabs>=2.0
+google-genai>=2.3
+requests>=2.32
+pytest>=8.4

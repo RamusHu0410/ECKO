@@ -1,0 +1,304 @@
+:root {
+  --paper: #f6f2ea;
+  --panel: #fffdf8;
+  --ink: #2a2521;
+  --muted: #7a7068;
+  --line: #e4dccf;
+  --accent: #c2572e;
+  --accent-ink: #ffffff;
+  --changed: #f4d9b8;
+  --warning: #8a2a12;
+  --warning-bg: #fbe3d8;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1c1916;
+    --panel: #26221e;
+    --ink: #f1ebe3;
+    --muted: #a89e93;
+    --line: #3b352f;
+    --accent: #e27a4f;
+    --accent-ink: #1c1916;
+    --changed: #5a3a22;
+    --warning: #ffc7b0;
+    --warning-bg: #4a2418;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px 16px 48px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 12px;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 22px;
+}
+
+h2 {
+  font-size: 17px;
+}
+
+h3 {
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.top,
+.columns {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.top {
+  margin-bottom: 20px;
+}
+
+.columns {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+.warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+/* Your song */
+.dial {
+  margin-bottom: 14px;
+  border-radius: 8px;
+  transition: background-color 1.2s;
+}
+
+.dial.changed {
+  background: var(--changed);
+  transition: none;
+}
+
+.dial-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dial-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.dial-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.labels {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.labels dt {
+  color: var(--muted);
+}
+
+.labels dd {
+  margin: 0;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+/* Talk */
+.hold {
+  display: block;
+  width: 100%;
+  padding: 22px;
+  border-radius: 16px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 18px;
+  font-weight: 600;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hold.recording {
+  outline: 4px solid var(--changed);
+}
+
+#hold-caption {
+  margin: 8px 0 16px;
+  text-align: center;
+}
+
+.type-form {
+  display: flex;
+  gap: 8px;
+}
+
+.type-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  padding: 6px 14px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.chips button {
+  font-size: 13px;
+  padding: 4px 10px;
+}
+
+.voice {
+  width: 100%;
+  margin: 8px 0;
+}
+
+.log,
+.versions {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.log li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.log .who {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 8px;
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.log .error {
+  color: var(--warning);
+}
+
+/* Versions and timings */
+.versions {
+  margin-bottom: 24px;
+}
+
+.versions li {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.versions li.current {
+  background: var(--changed);
+  font-weight: 600;
+}
+
+.timings {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.timings td {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.timings td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
