@@ -3,7 +3,7 @@
  * their records are kept in their own browser.
  *
  * TODO(backend): `me()` becomes the signed-in user from the session (GET /api/users/me), and
- * `signedIn()` gates the profile and social pages. The shape below is what the pages already
+ * `signedIn()` gates the profile and community pages. The shape below is what the pages already
  * read, so only this file changes.
  */
 

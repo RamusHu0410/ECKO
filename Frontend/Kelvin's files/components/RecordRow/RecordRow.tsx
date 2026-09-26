@@ -10,7 +10,7 @@ interface RecordRowProps {
   playing: boolean
   /** Null when there is nothing to play yet (a shared record with no audio). */
   onPlay: (() => void) | null
-  /** The like button on the social feed; the profile has none. */
+  /** Whatever sits at the right end of the row, such as the profile's delete button. */
   children?: ReactNode
 }
 

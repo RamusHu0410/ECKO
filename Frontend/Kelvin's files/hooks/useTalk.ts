@@ -9,8 +9,12 @@ import type { SongSettings } from './useSongSettings'
  */
 export type TalkPhase = 'idle' | 'listening' | 'thinking' | 'speaking' | 'remaking'
 
-/** mic: the microphone didn't start · short: a tap, not a command · failed: no answer came back · song: the new version couldn't be made */
-export type TalkProblem = 'mic' | 'short' | 'failed' | 'song'
+/**
+ * mic: the microphone didn't start · short: a tap, not a command · failed: no answer came back ·
+ * service: the backend couldn't hear or understand it (e.g. its ElevenLabs or Gemini key is missing) ·
+ * voice: the answer came back but couldn't be spoken · song: the new version couldn't be made
+ */
+export type TalkProblem = 'mic' | 'short' | 'failed' | 'service' | 'voice' | 'song'
 
 interface TalkOptions {
   settings: SongSettings
@@ -47,6 +51,7 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
     setPhase('thinking')
     try {
       const turn = await sendTalk(recording, before, versions.current.at(-1) ?? null)
+      if (turn.error) console.warn('[ECKO talk] the backend could not answer:', turn.error)
       const changed = turn.changed.length > 0
       if (changed) {
         if (turn.intent === 'undo') versions.current.pop()
@@ -58,8 +63,11 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
       setPhase('speaking')
       const remade = changed ? remakeSong(turn.settings).then(() => true, () => false) : Promise.resolve(true)
       voice.current ??= new Audio()
-      await playToEnd(voice.current, speechUrl(turn.speech_id))
+      const spoken = await playToEnd(voice.current, speechUrl(turn.speech_id))
+      if (!spoken) console.warn('[ECKO talk] the spoken answer could not be played (is ELEVENLABS_API_KEY set on the backend?)')
       if (changed) setPhase('remaking')
+      if (turn.intent === 'error') setProblem('service')
+      else if (!spoken) setProblem('voice')
       if (!(await remade)) setProblem('song')
     } catch (error) {
       if (import.meta.env.DEV) console.warn('[ECKO talk]', error)
@@ -133,11 +141,12 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
   }
 }
 
-/** Plays a streamed reply; resolves when it ends, or at once if it can't play. */
-function playToEnd(audio: HTMLAudioElement, url: string): Promise<void> {
+/** Plays a streamed reply; resolves true when it ends, or false at once if it can't play. */
+function playToEnd(audio: HTMLAudioElement, url: string): Promise<boolean> {
   return new Promise((resolve) => {
-    audio.onended = audio.onerror = () => resolve()
+    audio.onended = () => resolve(true)
+    audio.onerror = () => resolve(false)
     audio.src = url
-    audio.play().catch(() => resolve())
+    audio.play().catch(() => resolve(false))
   })
 }

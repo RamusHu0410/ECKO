@@ -101,6 +101,16 @@
   --color-key: #ece8e1;
   --color-key-pressed: #d9d3ca;
   --color-led-off: #4a3f36;
+  /* The glazed ceramic gnome who stands on the turntable once there's a song (hold him to talk) */
+  --gnome-green: #4f9d5c;
+  --gnome-green-deep: #2c7442;
+  --gnome-green-dark: #35603d;
+  --gnome-glow: #7ee08f;
+  --gnome-skin: #f0c6a4;
+  --gnome-nose: #e39a80;
+  --gnome-beard: #f5f1ea;
+  --gnome-boot: #4a3222;
+  --gnome-buckle: #d9ad55;
 
   /* Liquid pouring into the disc while recording */
   --color-liquid: rgba(251, 249, 245, 0.96);

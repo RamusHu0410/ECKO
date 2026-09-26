@@ -3,7 +3,7 @@ import { useLinkTo, type Route } from '../../routing/useRoute'
 
 /**
  * The bar over every page: the ECKO wordmark at the top-left, which always leads home, and the
- * Profile and Social glass icons at the top-right. The page being shown is marked for screen
+ * Community and Profile glass icons at the top-right. The page being shown is marked for screen
  * readers and carries the amber underline.
  */
 export default function SiteHeader({ route }: { route: Route }) {
@@ -15,7 +15,7 @@ export default function SiteHeader({ route }: { route: Route }) {
         ECKO
       </a>
       <nav className="flex items-center gap-3" aria-label="Pages">
-        <IconLink to="social" label="Social" current={route}>
+        <IconLink to="community" label="Community" current={route}>
           <PeopleIcon />
         </IconLink>
         <IconLink to="profile" label="Profile" current={route}>

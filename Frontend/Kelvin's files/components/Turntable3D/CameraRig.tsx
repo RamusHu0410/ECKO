@@ -17,15 +17,18 @@ const DAMPING = 9
 /**
  * Orbits the camera around the turntable: hold the left mouse button and move to turn it, double-click
  * to go back to the starting view. It never listens to the wheel, so scrolling always moves the page;
- * there is no zoom and no panning. `onDrag` says when a drag starts and ends (for the cursor).
+ * there is no zoom and no panning. `onDrag` says when a drag starts and ends (for the cursor). While
+ * `frozen` (the gnome is being held) moving the pointer doesn't turn it.
  */
-export default function CameraRig({ onDrag }: { onDrag: (dragging: boolean) => void }) {
+export default function CameraRig({ onDrag, frozen = false }: { onDrag: (dragging: boolean) => void; frozen?: boolean }) {
   const { camera, gl } = useThree()
   const wanted = useRef({ ...DEFAULT_VIEW }) // where the drag has asked the camera to go
   const shown = useRef({ ...DEFAULT_VIEW }) // where it is now, easing toward `wanted`
   const latestOnDrag = useRef(onDrag)
+  const latestFrozen = useRef(frozen)
   useEffect(() => {
     latestOnDrag.current = onDrag
+    latestFrozen.current = frozen
   })
 
   useEffect(() => {
@@ -40,6 +43,10 @@ export default function CameraRig({ onDrag }: { onDrag: (dragging: boolean) => v
     }
     const move = (event: PointerEvent) => {
       if (!last) return
+      if (latestFrozen.current) {
+        last = { x: event.clientX, y: event.clientY }
+        return
+      }
       const view = wanted.current
       view.turn -= (event.clientX - last.x) * RADIANS_PER_PIXEL
       view.tilt = Math.min(TILT_RANGE[1], Math.max(TILT_RANGE[0], view.tilt - (event.clientY - last.y) * RADIANS_PER_PIXEL))

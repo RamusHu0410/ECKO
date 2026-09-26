@@ -2,8 +2,17 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { TALK_REPLY, fakeBackend } from './fakeBackend'
 
 const mic = (page: Page) => page.getByRole('button', { name: /^Microphone/ })
-const key = (page: Page, name: 'HUM' | 'TALK') => page.getByRole('radio', { name })
+/** The gnome's button for the keyboard (the gnome himself is in the 3D scene). */
+const gnome = (page: Page) => page.getByRole('button', { name: /^The gnome/ })
 const rerecord = (page: Page) => page.getByRole('button', { name: 'Re-record' })
+
+/** Holds the gnome the keyboard's way: Space held down on his focused button. */
+async function holdGnome(page: Page, whileHeld: () => Promise<void>) {
+  await gnome(page).focus()
+  await page.keyboard.down('Space')
+  await whileHeld()
+  await page.keyboard.up('Space')
+}
 
 /** The way a keyboard user presses a button: the 3D turntable's page buttons only show once they have focus. */
 async function pressWithKeyboard(button: Locator) {
@@ -22,38 +31,34 @@ async function holdMic(page: Page, whileHeld: () => Promise<void>) {
   await page.mouse.up()
 }
 
-// with the CSS turntable HUM / TALK are on the page and get clicked (a long talk reply once covered them);
-// with the 3D one they are keys on the plinth, and the page's own buttons are for the keyboard
 for (const turntable of ['css', '3d'] as const) {
-  test(`hum, talk, hum again, then re-record (${turntable} turntable)`, async ({ page }) => {
-    const press = (name: 'HUM' | 'TALK') => (turntable === 'css' ? key(page, name).click() : pressWithKeyboard(key(page, name)))
+  test(`hum, talk to the gnome, hum again, then re-record (${turntable} turntable)`, async ({ page }) => {
     const calls = await fakeBackend(page)
     await page.goto(turntable === 'css' ? '/?turntable=css' : '/')
 
-    // hum the first tune
+    // no gnome, and so no talking, until there's a hum to change
+    await expect(gnome(page)).toHaveCount(0)
     await holdMic(page, async () => {
       await expect(page.getByText('release to stop')).toBeVisible()
       await page.waitForTimeout(1000)
     })
     await expect(rerecord(page)).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Hold the gnome to change your song')).toBeVisible()
 
-    // talk to it: the keys are locked while the mic listens
-    await press('TALK')
-    await holdMic(page, async () => {
-      await expect(key(page, 'HUM')).toBeDisabled()
+    // hold the gnome and talk: the mic is off while he listens
+    await holdGnome(page, async () => {
+      await expect(gnome(page)).toContainText('Listening')
+      await expect(mic(page)).toHaveAttribute('aria-disabled', 'true')
       await page.waitForTimeout(800)
     })
     await expect(page.getByText(TALK_REPLY).first()).toBeVisible() // the caption (the second copy is for screen readers)
     await expect(mic(page)).toHaveAttribute('aria-disabled', 'false', { timeout: 15_000 }) // the answer is done
     expect(calls.voice).toBe(1)
 
-    // back to HUM: holding the mic records a fresh hum over the song
-    await press('HUM')
-    await expect(key(page, 'HUM')).toBeChecked()
-    await expect(page.getByText('Hold to hum a new tune')).toBeVisible()
+    // the mic always hums: holding it records a fresh hum over the song
     await holdMic(page, async () => {
       await expect(page.getByText('release to stop')).toBeVisible()
-      await expect(key(page, 'TALK')).toBeDisabled()
+      await expect(gnome(page)).toHaveCount(0) // he's gone until the new song is ready
       await page.waitForTimeout(1000)
     })
     await expect(rerecord(page)).toBeVisible({ timeout: 15_000 })
@@ -63,6 +68,7 @@ for (const turntable of ['css', '3d'] as const) {
     await rerecord(page).click()
     await expect(page.getByText('Hold to hum', { exact: true })).toBeVisible()
     await expect(rerecord(page)).toBeHidden()
+    await expect(gnome(page)).toHaveCount(0)
   })
 }
 

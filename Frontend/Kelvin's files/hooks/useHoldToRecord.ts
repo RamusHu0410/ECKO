@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 
 interface HoldOptions {
   /** Whether a new hold can start right now. */
   enabled: boolean
   onPress: () => void
   onRelease: () => void
+  /**
+   * anywhere: holding the spacebar anywhere on the page holds (the microphone) ·
+   * focused: only Space or Enter on the focused control does (the gnome's keyboard button)
+   */
+  keys?: 'anywhere' | 'focused'
 }
 
 /** Controls that keep the spacebar for themselves: a focused, usable button or slider. */
@@ -14,11 +19,13 @@ function isOtherControl(target: EventTarget | null) {
   return control !== null && control.getAttribute('aria-disabled') !== 'true' && !control.matches(':disabled')
 }
 
+const isHoldKey = (code: string) => code === 'Space' || code === 'Enter' || code === 'NumpadEnter'
+
 /**
- * Press-and-hold on the microphone, with the pointer or by holding the spacebar anywhere.
- * Pointer capture keeps the hold going if the finger slides off the mic.
+ * Press-and-hold, with the pointer or the keyboard. Pointer capture keeps the hold going if the
+ * finger slides off. `press` and `release` are for things that aren't page elements (the 3D gnome).
  */
-export function useHoldToRecord({ enabled, onPress, onRelease }: HoldOptions) {
+export function useHoldToRecord({ enabled, onPress, onRelease, keys = 'anywhere' }: HoldOptions) {
   const [holding, setHolding] = useState(false)
   const holdingRef = useRef(false)
   const latest = useRef({ enabled, onPress, onRelease })
@@ -51,18 +58,34 @@ export function useHoldToRecord({ enabled, onPress, onRelease }: HoldOptions) {
       event.preventDefault()
       release()
     }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
+    if (keys === 'anywhere') {
+      window.addEventListener('keydown', down)
+      window.addEventListener('keyup', up)
+    }
     window.addEventListener('blur', release)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', release)
     }
-  }, [press, release])
+  }, [press, release, keys])
 
   const pointerHandlers = {
-    'data-hold-target': 'true',
+    ...(keys === 'anywhere'
+      ? { 'data-hold-target': 'true' }
+      : {
+          onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {
+            if (!isHoldKey(event.code)) return
+            event.preventDefault()
+            if (!event.repeat) press()
+          },
+          onKeyUp: (event: ReactKeyboardEvent<HTMLElement>) => {
+            if (!isHoldKey(event.code)) return
+            event.preventDefault()
+            release()
+          },
+          onBlur: release,
+        }),
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
       if (event.button !== 0) return
       event.preventDefault()
@@ -72,9 +95,9 @@ export function useHoldToRecord({ enabled, onPress, onRelease }: HoldOptions) {
     onPointerUp: release,
     onPointerCancel: release,
     onLostPointerCapture: release,
-    // Space on the focused mic is handled above; stop the button's own click
+    // Space on the focused control is handled above; stop the button's own click
     onClick: (event: MouseEvent<HTMLElement>) => event.preventDefault(),
   }
 
-  return { holding, pointerHandlers }
+  return { holding, press, release, pointerHandlers }
 }

@@ -2,7 +2,6 @@
 import type { SessionPhase } from '../hooks/useRecordSession'
 import type { MicProblem } from '../hooks/useRecorder'
 import type { UploadFailureKind } from '../api/uploadHum'
-import type { Mode } from '../hooks/useMode'
 import type { TalkPhase, TalkProblem } from '../hooks/useTalk'
 
 export function discLabel(phase: SessionPhase, paused: boolean): string {
@@ -19,38 +18,40 @@ export function discLabel(phase: SessionPhase, paused: boolean): string {
   }
 }
 
-export function micLabel(mode: Mode): string {
-  return mode === 'talk'
-    ? 'Microphone. Hold it, or hold the space bar, and say how to change the song.'
-    : 'Microphone. Hold it, or hold the space bar, to hum for up to 10 seconds.'
-}
+export const MIC_LABEL = 'Microphone. Hold it, or hold the space bar, to hum for up to 10 seconds.'
 
-/** Under the mic, except in talk mode once there's a song to change (see talkCaption). */
-export function micCaption(phase: SessionPhase, mode: Mode, holding: boolean, secondsLeft: number, answering: boolean): string {
+/** The gnome's keyboard button (the gnome itself is in the 3D scene, which screen readers skip). */
+export const GNOME_LABEL = 'The gnome. Hold it, or hold Space or Enter, and say how to change the song.'
+
+/** Under the mic, except once something has been said to the gnome (see talkCaption). */
+export function micCaption(phase: SessionPhase, holding: boolean, secondsLeft: number, answering: boolean): string {
   if (phase === 'requesting') return 'Allow the microphone'
   if (phase === 'recording') {
     return holding ? `${clock(secondsLeft)} · release to stop` : `${clock(secondsLeft)} · tap the mic to stop`
   }
-  if (mode === 'talk') return phase === 'idle' ? 'Hum a tune first, then talk to change it.' : ''
   if (answering) return 'One moment, ECKO is still answering…'
   if (phase === 'idle') return 'Hold to hum'
-  if (phase === 'ready' || phase === 'failed') return 'Hold to hum a new tune'
+  if (phase === 'ready') return 'Hold the gnome to change your song, or the mic to hum a new tune'
+  if (phase === 'failed') return 'Hold to hum a new tune'
   return ''
 }
 
-/** Under the mic in talk mode, once there's a song to change. */
+/** Under the mic once something has been said to the gnome about the song. */
 export function talkCaption(phase: TalkPhase, reply: string, problem: TalkProblem | null, secondsLeft: number): string {
   if (phase === 'listening') return `${clock(secondsLeft)} · release when you're done`
   if (phase === 'thinking') return 'Thinking…'
   if (phase === 'remaking') return 'Pressing the new version…'
+  if (problem === 'voice' && reply) return `${reply} (${TALK_PROBLEMS.voice})`
   if (problem) return TALK_PROBLEMS[problem]
-  return reply || 'Hold to talk. Try “make it faster”.'
+  return reply || 'Hold the gnome and talk. Try “make it faster”.'
 }
 
 const TALK_PROBLEMS: Record<TalkProblem, string> = {
   mic: 'The microphone didn’t start. Allow it, then try again.',
   short: 'Keep holding while you talk.',
   failed: 'That didn’t reach ECKO. Try again in a moment.',
+  service: 'ECKO couldn’t hear you: its speech service isn’t set up on the server.',
+  voice: 'ECKO couldn’t say it out loud: its voice isn’t set up on the server.',
   song: 'The new version couldn’t be made. Your song is unchanged.',
 }
 
@@ -61,7 +62,7 @@ function clock(secondsLeft: number): string {
 export const ANNOUNCEMENTS: Partial<Record<SessionPhase, string>> = {
   recording: 'Recording. Hum now.',
   waiting: 'Pressing your record.',
-  ready: 'Your record is playing. Tap it to pause.',
+  ready: 'Your record is playing. Tap it to pause. A gnome is on the turntable: hold it to talk and change the song.',
 }
 
 export const MIC_HELP: Record<MicProblem, { title: string; body: string }> = {

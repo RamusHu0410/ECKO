@@ -1,7 +1,6 @@
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { useReducedMotion } from 'motion/react'
 import { useRecordSession, type SessionPhase } from './useRecordSession'
-import { useMode, type Mode } from './useMode'
 import { useSongSettings } from './useSongSettings'
 import { useHoldToRecord } from './useHoldToRecord'
 import { useSongPlayer } from './useSongPlayer'
@@ -10,50 +9,47 @@ import { useFaderRemake } from './useFaderRemake'
 import { useKeepRecord } from './useKeepRecord'
 import type { SongSettings } from './useSongSettings'
 
-/** HUM can start a fresh hum from these; one that already has a song is replaced by the new hum. */
+/** The mic can start a fresh hum from these; one that already has a song is replaced by the new hum. */
 const HUM_FROM: ReadonlySet<SessionPhase> = new Set(['idle', 'mic-error', 'ready', 'failed'])
 
 /**
- * The studio's controls in one place, so the page only draws them: the record session, talk mode,
- * the song settings and playback, and the rules for the microphone and the HUM / TALK keys.
+ * The studio's controls in one place, so the page only draws them: the record session, talk,
+ * the song settings and playback, and the rules for the microphone and the gnome.
  *
  * Both ways of changing the song end in the same place: a fader through `adjust`, and a spoken
- * command through talk mode, each making the song again from the hum that is already saved.
+ * command through talk, each making the song again from the hum that is already saved.
  *
- * The keys can be switched at any time, except while the mic is live (held, recording or
- * listening). HUM records a fresh hum whenever nothing is being pressed, even over a song that
- * exists. TALK changes the song once there is one. Either waits while ECKO is still answering,
- * so its voice isn't recorded into the next hum.
+ * The microphone always records a hum, even over a song that exists. Talking is holding the gnome,
+ * who only shows up once there's a song to change. Neither starts while ECKO is still answering,
+ * so its voice isn't recorded into the next hum, and neither starts while the other is live.
  */
 export function useStudio() {
   const reducedMotion = useReducedMotion() ?? false
   const { settings, update } = useSongSettings()
   const session = useRecordSession(reducedMotion, settings)
-  const { mode, setMode } = useMode()
   const talk = useTalk({ settings, update, remakeSong: session.remakeSong })
   const { phase } = session
   const hasSong = phase === 'ready'
 
   const canHum = !talk.busy && (HUM_FROM.has(phase) || phase === 'recording') // while recording, a tap stops it
-  const canTalk = hasSong && !talk.busy
-  const pressedMode = useRef<Mode>(mode) // a release always goes back to the mode that started the hold
 
   const hold = useHoldToRecord({
-    enabled: mode === 'talk' ? canTalk : canHum,
+    enabled: canHum,
     onPress: () => {
-      pressedMode.current = mode
-      if (mode === 'talk') void talk.listen()
-      else if (HUM_FROM.has(phase)) session.record()
+      if (HUM_FROM.has(phase)) session.record()
     },
     // released before the mic was ready (e.g. during the permission prompt): the recording keeps
     // going and a tap on the mic stops it
-    onRelease: () => {
-      if (pressedMode.current === 'talk') talk.stop()
-      else session.stopRecording()
-    },
+    onRelease: () => session.stopRecording(),
   })
 
-  const micLive = hold.holding || phase === 'requesting' || phase === 'recording' || talk.phase === 'listening'
+  const canTalk = hasSong && !talk.busy && !hold.holding
+  const talkHold = useHoldToRecord({
+    enabled: canTalk,
+    keys: 'focused',
+    onPress: () => void talk.listen(),
+    onRelease: () => talk.stop(),
+  })
 
   // the song plays while the record turns, and waits while someone talks to it
   const player = useSongPlayer(session.song, hasSong && !session.paused && !talk.busy)
@@ -85,20 +81,27 @@ export function useStudio() {
     adjust,
     session,
     talk,
-    mode,
-    setMode,
-    /** The HUM / TALK keys can't change while the mic is live. */
-    modeLocked: micLive,
-    /** A song exists: it plays, Replay and Re-record show, and TALK can change it. */
+    /** A song exists: it plays, Replay and Re-record show, and the gnome is there to talk to. */
     hasSong,
     replay,
-    /** Talk mode with a song to talk to: the caption and announcements are talk's. */
-    talking: mode === 'talk' && hasSong,
+    /** Something was said to the gnome about this song: the caption and announcements are talk's. */
+    talking: hasSong && (talk.busy || talk.reply !== '' || talk.problem !== null),
     mic: {
       pointerHandlers: hold.pointerHandlers,
       holding: hold.holding,
-      recording: phase === 'recording' || talk.phase === 'listening',
-      enabled: mode === 'talk' ? canTalk : canHum || phase === 'requesting',
+      recording: phase === 'recording',
+      enabled: canHum || phase === 'requesting',
+    },
+    /** The gnome on the sound box: press and hold it to talk. */
+    gnome: {
+      present: hasSong,
+      enabled: canTalk,
+      holding: talkHold.holding,
+      phase: talk.phase,
+      press: talkHold.press,
+      release: talkHold.release,
+      /** For its keyboard button on the page: hold Space or Enter on it. */
+      keyHandlers: talkHold.pointerHandlers,
     },
   }
 }

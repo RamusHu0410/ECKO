@@ -16,7 +16,7 @@ export interface Turntable3DProps extends Omit<TurntableModelProps, 'onHover' | 
 /**
  * The turntable in real 3D (three.js through react-three-fiber). Drag to look around it; the wheel
  * always scrolls the page. It draws only while it's on screen. The canvas is hidden from screen
- * readers: the record has a button of its own here, and HUM / TALK are the page's radio buttons.
+ * readers: the record has a button of its own here, and the gnome has one on the page.
  */
 export default function Turntable3D({ label, ...model }: Turntable3DProps) {
   const box = useRef<HTMLDivElement>(null)
@@ -26,7 +26,7 @@ export default function Turntable3D({ label, ...model }: Turntable3DProps) {
   const [environment, setEnvironment] = useState<Texture | null>(null)
 
   return (
-    <div ref={box} className="tt3d" style={{ cursor: dragging ? 'grabbing' : hovering ? 'pointer' : 'grab' }}>
+    <div ref={box} className="tt3d" style={{ cursor: model.gnome.holding || hovering ? 'pointer' : dragging ? 'grabbing' : 'grab' }}>
       <Canvas
         shadows={{ type: VSMShadowMap }}
         dpr={[1, MAX_PIXEL_RATIO]}
@@ -37,7 +37,7 @@ export default function Turntable3D({ label, ...model }: Turntable3DProps) {
         aria-hidden="true"
       >
         <StudioLights onEnvironment={setEnvironment} />
-        <CameraRig onDrag={setDragging} />
+        <CameraRig onDrag={setDragging} frozen={model.gnome.holding} />
         <Suspense fallback={null}>
           <TurntableModel {...model} environment={environment} onHover={setHovering} />
         </Suspense>

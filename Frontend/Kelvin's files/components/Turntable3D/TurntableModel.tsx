@@ -5,11 +5,11 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { MotionValue } from 'motion/react'
 import woodPhoto from '../../assets/textures/MapleWood.avif'
 import { readToken } from '../../design/readToken'
-import type { Mode } from '../../hooks/useMode'
 import { FOOT, MAT, PLATTER, PLINTH, RECORD, RECORD_TOP, TOP } from './dimensions'
 import { brushedMetalTexture, softShadowTexture, useDiscTexture, type DiscState } from './textures'
 import Tonearm3D from './Tonearm3D'
-import ModeKeys3D from './ModeKeys3D'
+import HumKey3D from './HumKey3D'
+import Gnome3D, { type GnomeProps } from './Gnome3D'
 import { DRAG_PIXELS } from './CameraRig'
 
 const DEGREES = Math.PI / 180
@@ -28,9 +28,10 @@ export interface TurntableModelProps {
   onTap: () => void
   onRecord: boolean
   reducedMotion: boolean
-  mode: Mode
-  onModeChange: (mode: Mode) => void
-  modeLocked: boolean
+  /** The mic is recording a hum: the HUM key is pressed in and lit. */
+  humming: boolean
+  /** The gnome who stands on the turntable once there's a song; hold him to talk. */
+  gnome: Omit<GnomeProps, 'onHover' | 'reducedMotion'>
   /** Reports whether the pointer is over something that can be clicked (for the hand cursor). */
   onHover: (over: boolean) => void
   /** The studio's reflections; the record takes less of them than the metal, so it stays black. */
@@ -39,7 +40,7 @@ export interface TurntableModelProps {
 
 /**
  * The turntable: a thick walnut plinth on four feet, a brushed-aluminum platter with a black rubber
- * mat and the record, the tonearm, and the HUM / TALK keys on the front.
+ * mat and the record, the tonearm, the HUM key on the front, and the gnome once there's a song.
  */
 export default function TurntableModel(props: TurntableModelProps) {
   const { rotation, disc, isVinyl, tappable, onTap, onRecord, reducedMotion, onHover, environment } = props
@@ -168,7 +169,8 @@ export default function TurntableModel(props: TurntableModelProps) {
       </group>
 
       <Tonearm3D onRecord={onRecord} reducedMotion={reducedMotion} />
-      <ModeKeys3D mode={props.mode} onChange={props.onModeChange} locked={props.modeLocked} onHover={onHover} />
+      <HumKey3D humming={props.humming} />
+      <Gnome3D {...props.gnome} onHover={onHover} reducedMotion={reducedMotion} />
     </group>
   )
 }

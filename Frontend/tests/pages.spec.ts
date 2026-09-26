@@ -26,24 +26,24 @@ test('the whole journey, with a shot of each page', async ({ page }) => {
   await hum(page)
   await page.waitForTimeout(800)
 
-  // social, from the header icon
-  await page.getByRole('link', { name: 'Social' }).click()
-  await expect(page).toHaveURL(/\/social$/)
-  await expect(page.getByRole('heading', { name: 'Social' })).toBeVisible()
+  // community, from the header icon
+  await page.getByRole('link', { name: 'Community' }).click()
+  await expect(page).toHaveURL(/\/community$/)
+  await expect(page.getByRole('heading', { name: 'Community' })).toBeVisible()
   await page.waitForTimeout(600)
-  await page.screenshot({ path: `${OUT}/6-social.png` })
+  await page.screenshot({ path: `${OUT}/6-community.png` })
 
-  // a like sticks across a reload
   // a shared record plays its stand-in phrase
-  const firstRow = page.getByRole('listitem').first()
-  await firstRow.getByRole('button', { name: /^Play / }).click()
-  await expect(firstRow.getByRole('button', { name: /^Pause / })).toBeVisible()
+  const firstPost = page.getByRole('article').first()
+  await firstPost.getByRole('button', { name: /^Play / }).click()
+  await expect(firstPost.getByRole('button', { name: /^Pause / })).toBeVisible()
 
-  const like = page.getByRole('button', { name: /^Like Something for the walk home/ })
-  await like.click()
-  await expect(page.getByRole('button', { name: /^Unlike Something for the walk home/ })).toBeVisible()
+  // an upvote sticks across a reload
+  const upvote = page.getByRole('button', { name: 'Upvote Something for the walk home' })
+  await upvote.click()
+  await expect(upvote).toHaveAttribute('aria-pressed', 'true')
   await page.reload()
-  await expect(page.getByRole('button', { name: /^Unlike Something for the walk home/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Upvote Something for the walk home' })).toHaveAttribute('aria-pressed', 'true')
 
   // profile: the record just made is there and plays
   await page.getByRole('link', { name: 'Profile' }).click()

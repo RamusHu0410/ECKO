@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import Turntable from '../components/Turntable/Turntable'
 import Microphone from '../components/Microphone/Microphone'
-import ModeButtons from '../components/Turntable/ModeButtons'
 import NoteStream from '../components/NoteStream/NoteStream'
 import AdjustmentsPanel from '../components/AdjustmentsPanel/AdjustmentsPanel'
 import NotesGraph from '../components/NotesGraph/NotesGraph'
@@ -18,24 +17,25 @@ const CSS_TURNTABLE = new URLSearchParams(window.location.search).get('turntable
 import { appear } from '../design/motion'
 import {
   ANNOUNCEMENTS,
+  GNOME_LABEL,
   MIC_HELP,
+  MIC_LABEL,
   UPLOAD_FAILED_TITLE,
   UPLOAD_HELP,
   discLabel,
   micCaption,
-  micLabel,
   talkCaption,
 } from './homeCopy'
 
 /**
  * The home page: the intro, then the studio below it. In the studio the turntable is centered
- * with the microphone below it, the HUM / TALK keys to its left and the song's buttons to its
- * right. Once a song is made, the turntable settles into a top-down birdview and the adjustments
+ * with the microphone below it and the song's buttons to its right; once there's a song, a gnome
+ * stands on the turntable, and holding him is how you talk to it. Once a song is made, the turntable settles into a top-down birdview and the adjustments
  * panel fades in beneath it. Narrow screens stack it all the same way.
  */
 export default function HomePage() {
   const studio = useStudio()
-  const { session, talk, mode, mic, talking, hasSong, reducedMotion, settings } = studio
+  const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings } = studio
   const { phase, micProblem, uploadFailure } = session
 
   return (
@@ -70,9 +70,15 @@ export default function HomePage() {
               onTap={session.tap}
               onRecord={hasSong}
               reducedMotion={reducedMotion}
-              mode={mode}
-              onModeChange={studio.setMode}
-              modeLocked={studio.modeLocked}
+              humming={phase === 'recording'}
+              gnome={{
+                present: gnome.present,
+                enabled: gnome.enabled,
+                holding: gnome.holding,
+                phase: gnome.phase,
+                onPress: gnome.press,
+                onRelease: gnome.release,
+              }}
             />
           </Suspense>
         )}
@@ -114,8 +120,8 @@ export default function HomePage() {
           </AnimatePresence>
         </div>
 
-        {/* the keys, the mic with its caption, and the song's buttons. A grid, so a long caption (a talk
-            reply) wraps inside the middle column instead of spreading over the keys and taking their
+        {/* the mic with its caption, and the song's buttons. A grid, so a long caption (a talk reply)
+            wraps inside the middle column instead of spreading over the buttons and taking their
             clicks. Narrow screens put the mic on its own row. */}
         <div className="grid w-full max-w-2xl grid-cols-2 items-start gap-x-5 gap-y-4 sm:grid-cols-[1fr_minmax(0,18rem)_1fr]">
           <div className="col-span-2 flex justify-center sm:col-span-1 sm:col-start-2 sm:row-start-1">
@@ -123,23 +129,29 @@ export default function HomePage() {
               pointerHandlers={mic.pointerHandlers}
               recording={mic.recording}
               enabled={mic.enabled}
-              label={micLabel(mode)}
+              label={MIC_LABEL}
               caption={
                 talking
                   ? talkCaption(talk.phase, talk.reply, talk.problem, talk.secondsLeft)
-                  : micCaption(phase, mode, mic.holding, session.secondsLeft, talk.busy)
+                  : micCaption(phase, mic.holding, session.secondsLeft, talk.busy)
               }
             >
               <NoteStream active={phase === 'recording'} level={session.canvas.liveLevel} />
             </Microphone>
           </div>
-          {/* with the 3D turntable, HUM / TALK are keys on the plinth; these stay for the keyboard and
-              screen readers, and show only while one of them has focus */}
-          <div
-            className={`justify-self-end sm:col-start-1 sm:row-start-1 sm:pt-[calc(var(--mic-size)*0.3)] ${CSS_TURNTABLE ? '' : 'sr-only focus-within:not-sr-only'}`}
-          >
-            <ModeButtons mode={mode} onChange={studio.setMode} disabled={studio.modeLocked} />
-          </div>
+          {/* the gnome is in the 3D scene, which screen readers and the keyboard skip: this is his
+              button for them, and it shows only while it has focus */}
+          {hasSong && (
+            <button
+              type="button"
+              className="glass-surface glass-control sr-only px-5 py-2 text-sm text-ink focus-visible:not-sr-only justify-self-end sm:col-start-1 sm:row-start-1"
+              aria-label={GNOME_LABEL}
+              aria-disabled={!gnome.enabled}
+              {...gnome.keyHandlers}
+            >
+              <span className="glass-content">{gnome.holding ? 'Listening…' : 'Hold to talk'}</span>
+            </button>
+          )}
           <AnimatePresence>
             {hasSong && (
               <motion.div
