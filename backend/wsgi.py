@@ -25,6 +25,9 @@ if os.environ.get("VERCEL"):
     # The deployment is read-only except /tmp.
     os.environ.setdefault("UPLOAD_FOLDER", "/tmp/uploads")
     os.environ.setdefault("RECORDINGS_FOLDER", "/tmp/recordings")
+    # librosa compiles with numba's cache=True, which writes next to the package by default. On a
+    # read-only filesystem that fails at `import librosa` ("no locator available for file").
+    os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp/numba_cache")
 
 from app import create_app  # noqa: E402
 
