@@ -14,7 +14,7 @@ from .commands import Command
 from .edits import check, describe
 from .settings import SongSettings, apply_command, blocked_adjustments, changed_fields
 
-Understand = Callable[[str, SongSettings], Command]
+Understand = Callable[[str, SongSettings, str | None], Command]  # the words, the song, the gnome's personality
 Transcribe = Callable[[bytes, str], str]
 
 log = logging.getLogger(__name__)
@@ -49,11 +49,13 @@ class Pipeline:
         self._understand = understand
         self._transcribe = transcribe
 
-    def from_text(self, text: str, current: SongSettings, previous: SongSettings | None = None) -> Turn:
+    def from_text(self, text: str, current: SongSettings, previous: SongSettings | None = None, personality: str | None = None) -> Turn:
         started = time.perf_counter()
-        return self._interpret((text or "").strip(), current, previous, {}, started)
+        return self._interpret((text or "").strip(), current, previous, personality, {}, started)
 
-    def from_audio(self, audio: bytes, filename: str, current: SongSettings, previous: SongSettings | None = None) -> Turn:
+    def from_audio(
+        self, audio: bytes, filename: str, current: SongSettings, previous: SongSettings | None = None, personality: str | None = None
+    ) -> Turn:
         started = time.perf_counter()
         timings: dict[str, int] = {}
         try:
@@ -64,14 +66,14 @@ class Pipeline:
         timings["transcribe_ms"] = _ms_since(started)
         if not heard:
             return _finish(Turn("", "unclear", current, phrases.NOTHING_HEARD), timings, started)
-        return self._interpret(heard, current, previous, timings, started)
+        return self._interpret(heard, current, previous, personality, timings, started)
 
-    def _interpret(self, text, current, previous, timings, started) -> Turn:
+    def _interpret(self, text, current, previous, personality, timings, started) -> Turn:
         if not text:
             return _finish(Turn("", "unclear", current, phrases.NOTHING_TYPED), timings, started)
         asked = time.perf_counter()
         try:
-            command = self._understand(text, current)
+            command = self._understand(text, current, personality)
         except Exception as exc:
             log.exception("understanding failed")
             return _finish(Turn(text, "error", current, phrases.LOST_THOUGHT, error=_describe(exc)), timings, started)

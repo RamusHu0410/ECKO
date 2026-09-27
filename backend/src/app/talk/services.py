@@ -14,7 +14,7 @@ from .tts import Speaker
 @dataclass
 class Services:
     pipeline: Pipeline
-    speak: Callable[[str], Iterable[bytes]]
+    speak: Callable[[str, str | None], Iterable[bytes]]  # the text, and a voice id (None: the configured voice)
     replies: ShortTermStore  # reply texts waiting to be spoken, by id
 
 

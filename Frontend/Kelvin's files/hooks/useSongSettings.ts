@@ -27,8 +27,9 @@ const MIDDLE: SongSettings = {
   emotion: 0.5,
   speed: 0.5,
   pitch: 0.5,
-  style: null,
-  instruments: [{ name: 'synth', role: 'lead', level: 'normal', section: 'all' }],
+  // a new song starts as the warm synth pad, in the cinematic style; talk mode can change both
+  style: 'cinematic',
+  instruments: [{ name: 'synth pad', role: 'lead', level: 'normal', section: 'all' }],
   energy: { start: 0, end: 0 },
 }
 

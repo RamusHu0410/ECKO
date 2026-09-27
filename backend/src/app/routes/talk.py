@@ -1,6 +1,7 @@
 """Talk mode's routes, mounted at /talk (see app/__init__.py). The work itself lives in app/talk/.
 
-POST /talk/voice          the recording + current settings → what was heard, new settings, reply id
+POST /talk/voice          the recording + current settings (+ the gnome's character) → what was heard,
+                          new settings, reply id
 GET  /talk/speech/<id>    that reply, spoken and streamed as MP3
 POST /talk/song           the hum saved by /upload + settings → the song as WAV
 POST /talk/notes          the same → the notes heard in the hum, the notes the song plays, and the
@@ -14,6 +15,7 @@ import time
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.utils import secure_filename
 
+from ..talk.characters import Character, character
 from ..talk.config import load_config
 from ..talk.services import Services, build_services
 from ..talk.settings import SongSettings
@@ -36,21 +38,23 @@ def voice():
     audio = request.files.get("audio")
     if audio is None:
         raise ValueError("Send the recording in a form field called audio.")
-    current, previous = _read_state(json.loads(request.form.get("state") or "{}"))
+    current, previous, gnome = _read_state(json.loads(request.form.get("state") or "{}"))
     services = _services()
-    turn = services.pipeline.from_audio(audio.read(), audio.filename or "talk.webm", current, previous)
-    return jsonify({**turn.to_dict(), "speech_id": services.replies.put(turn.reply)})
+    turn = services.pipeline.from_audio(audio.read(), audio.filename or "talk.webm", current, previous, gnome.personality)
+    # the reply is spoken later, in this character's voice
+    return jsonify({**turn.to_dict(), "speech_id": services.replies.put((turn.reply, gnome.voice_id))})
 
 
 @bp.get("/speech/<reply_id>")
 def speech(reply_id):
     services = _services()
-    text = services.replies.get(reply_id)
-    if text is None:
+    saved = services.replies.get(reply_id)
+    if saved is None:
         return _error("That reply has expired. Say it again.", 404)
+    text, voice_id = saved
     started = time.perf_counter()
     try:
-        chunks = iter(services.speak(text))
+        chunks = iter(services.speak(text, voice_id))
         first = next(chunks, b"")  # fail here, before any audio is sent, if the voice service is down
     except Exception as exc:
         current_app.logger.exception("text to speech failed")
@@ -94,12 +98,14 @@ def _saved_hum(data) -> str | None:
     return hum_path if os.path.isfile(hum_path) else None
 
 
-def _read_state(data) -> tuple[SongSettings, SongSettings | None]:
-    """The settings the page has now, and the version before them (so "undo" can be spoken)."""
+def _read_state(data) -> tuple[SongSettings, SongSettings | None, Character]:
+    """The settings the page has now, the version before them (so "undo" can be spoken), and the
+    gnome's character (ECKO when none or an unknown one is named)."""
     if not isinstance(data, dict):
         raise ValueError("state must be an object")
     previous = data.get("previous")
-    return SongSettings.from_dict(data.get("settings")), SongSettings.from_dict(previous) if previous else None
+    current = SongSettings.from_dict(data.get("settings"))
+    return current, SongSettings.from_dict(previous) if previous else None, character(data.get("character"))
 
 
 def _first_then_rest(first: bytes, rest):

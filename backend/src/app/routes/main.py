@@ -3,11 +3,14 @@ import tempfile
 import time
 import uuid
 from math import isfinite
+from pathlib import Path
 
 import numpy as np
+import soundfile
 from flask import Blueprint, jsonify, current_app, request, has_app_context, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
+from accompanist.audio.render import render_midi
 from accompanist.generate import generate_accompaniment
 from accompanist.music.styles import STYLES
 
@@ -16,6 +19,13 @@ from ..audio.intake import AudioInputError, unique_upload_name
 from ..audio.processor import analyze_audio_file, clean_wav
 
 bp = Blueprint("main", __name__)
+
+# The "creepy" sound for /accompaniment/generate: FluidSynth's small demo soundfont, whose instruments
+# are all crude retro waves. Looked for next to the real soundfont first, then where Homebrew puts it.
+CREEPY_SOUNDFONTS = (
+    Path(__file__).resolve().parents[3] / "accompanist" / "soundfonts" / "VintageDreamsWaves-v2.sf2",
+    Path("/opt/homebrew/share/fluid-synth/sf2/VintageDreamsWaves-v2.sf2"),
+)
 
 
 def _json_safe(value):
@@ -229,7 +239,8 @@ def accompaniment_generate():
           "tempo": 120,          # optional
           "style": "classical", # optional: piano|pop|cinematic|classical|jazz|asian_folk
           "instrument": "synth", # optional; synth is the default
-          "format": "midi"       # optional: "midi" (default) | "wav" | "json"
+          "format": "midi",      # optional: "midi" (default) | "wav" | "json"
+          "sound": "normal"      # optional, for wav: "normal" (default) | "creepy" (retro demo soundfont)
         }
 
     Response:
@@ -251,6 +262,11 @@ def accompaniment_generate():
     out_format = (data.get("format") or "midi").lower()
     if out_format not in ("midi", "wav", "json"):
         return jsonify({"error": "format must be 'midi', 'wav', or 'json'."}), 400
+
+    sound = (data.get("sound") or "normal").lower()
+    if sound not in ("normal", "creepy"):
+        return jsonify({"error": "sound must be 'normal' or 'creepy'."}), 400
+    creepy = out_format == "wav" and sound == "creepy"
 
     # allow_edit_melody: whether the engine may alter the melody itself.
     # Accepts "yes"/"no" (or true/false). Default is "no" — the melody line is
@@ -291,7 +307,7 @@ def accompaniment_generate():
             instrument=instrument,
             modulate_to_key=modulate_to_key,
             modulate_to_mode=modulate_to_mode,
-            render_wav=(out_format == "wav"),
+            render_wav=(out_format == "wav" and not creepy),
         )
     except (ValueError, TypeError) as exc:
         return jsonify({"error": str(exc)}), 400
@@ -311,15 +327,21 @@ def accompaniment_generate():
         }), 200
 
     if out_format == "wav":
-        if not result.wav_path or not os.path.exists(result.wav_path):
+        wav_path = _render_creepy(result.midi_path) if creepy else result.wav_path
+        if not wav_path or not os.path.exists(wav_path):
             return jsonify({
                 "error": "WAV rendering unavailable (FluidSynth/soundfont missing).",
                 "warnings": result.warnings,
             }), 503
+        # FluidSynth renders quietly, and each soundfont at its own level: bring every version up to
+        # the loudness of talk mode's songs (app/talk/song.py), so switching sounds keeps the volume.
+        samples, rate = soundfile.read(wav_path)
+        if np.abs(samples).max() > 0:
+            soundfile.write(wav_path, samples * (0.9 / np.abs(samples).max()), rate, subtype="PCM_16")
         # Not an attachment: the frontend streams this straight into an
         # <audio> element / Web Audio for playback.
         return send_file(
-            result.wav_path,
+            wav_path,
             mimetype="audio/wav",
             as_attachment=False,
             download_name=f"accompaniment_{stem}.wav",
@@ -332,6 +354,18 @@ def accompaniment_generate():
         as_attachment=True,
         download_name=f"accompaniment_{stem}.mid",
     )
+
+
+def _render_creepy(midi_path):
+    """The song through the creepy soundfont, or None if it (or FluidSynth) isn't on this machine."""
+    soundfont = next((str(path) for path in CREEPY_SOUNDFONTS if path.is_file()), None)
+    if soundfont is None:
+        return None
+    try:
+        return render_midi(midi_path, os.path.splitext(midi_path)[0] + ".wav", soundfont=soundfont)
+    except Exception:  # noqa: BLE001 - answered as rendering unavailable (503)
+        current_app.logger.exception("Rendering with the creepy soundfont failed")
+        return None
 
 
 def _discard(path):

@@ -1,13 +1,15 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
 import { useRecordSession, type SessionPhase } from './useRecordSession'
 import { useSongSettings } from './useSongSettings'
 import { useHoldToRecord } from './useHoldToRecord'
-import { useSongPlayer } from './useSongPlayer'
+import { useBlendPlayer } from './useBlendPlayer'
 import { useTalk } from './useTalk'
 import { useFaderRemake } from './useFaderRemake'
 import { useKeepRecord } from './useKeepRecord'
 import type { SongSettings } from './useSongSettings'
+import { blendVolumes, nearestVersion } from '../audio/blend'
+import { GNOMES, type GnomeId } from '../data/gnomes'
 
 /** The mic can start a fresh hum from these; one that already has a song is replaced by the new hum. */
 const HUM_FROM: ReadonlySet<SessionPhase> = new Set(['idle', 'mic-error', 'ready', 'failed'])
@@ -26,8 +28,12 @@ const HUM_FROM: ReadonlySet<SessionPhase> = new Set(['idle', 'mic-error', 'ready
 export function useStudio() {
   const reducedMotion = useReducedMotion() ?? false
   const { settings, update } = useSongSettings()
-  const session = useRecordSession(reducedMotion, settings)
-  const talk = useTalk({ settings, update, remakeSong: session.remakeSong })
+  // Advanced shows the sound slider; without it, talk mode and the faders shape the one song alone
+  const [advanced, setAdvanced] = useState(false)
+  const session = useRecordSession(reducedMotion, settings, advanced)
+  // which gnome answers when you talk: his look, voice and personality
+  const [gnomeId, setGnomeId] = useState<GnomeId>('ecko')
+  const talk = useTalk({ settings, update, remakeSong: session.remakeSong, gnome: gnomeId })
   const { phase } = session
   const hasSong = phase === 'ready'
 
@@ -51,11 +57,17 @@ export function useStudio() {
     onRelease: () => talk.stop(),
   })
 
-  // the song plays while the record turns, and waits while someone talks to it
-  const player = useSongPlayer(session.song, hasSong && !session.paused && !talk.busy)
+  // the sound slider: 0 classical piano, 0.5 synth, 1 creepy, and any blend between. It blends once
+  // all three versions are there (turning Advanced on makes them); until then the one song plays as is
+  const [mix, setMix] = useState(0.5)
+  const blending = session.songs?.length === 3
 
-  // every finished song is kept in this browser, so the profile page can list and play it
-  useKeepRecord(session.song, settings, hasSong)
+  // the song plays while the record turns, and waits while someone talks to it
+  const player = useBlendPlayer(session.songs, blending ? blendVolumes(mix) : [1], hasSong && !session.paused && !talk.busy)
+
+  // every finished song is kept in this browser, so the profile page can list and play it: with the
+  // slider, the version it's closest to
+  useKeepRecord(session.songs?.[blending ? nearestVersion(mix) : 0] ?? null, settings, hasSong)
 
   // the faders shape the song that is already playing: each move makes it again from the same hum
   const scheduleRemake = useFaderRemake(settings, session.remakeSong, hasSong)
@@ -92,8 +104,19 @@ export function useStudio() {
       recording: phase === 'recording',
       enabled: canHum || phase === 'requesting',
     },
-    /** The gnome on the sound box: press and hold it to talk. */
+    /** Advanced: the sound slider, where it is, and whether its three versions are ready to blend. */
+    sound: {
+      advanced,
+      toggleAdvanced: () => setAdvanced((on) => !on),
+      mix,
+      setMix,
+      blending,
+    },
+    /** The gnome on the sound box: press and hold it to talk. `id` is which character he is. */
     gnome: {
+      id: gnomeId,
+      choose: setGnomeId,
+      look: GNOMES.find((gnome) => gnome.id === gnomeId)?.look,
       present: hasSong,
       enabled: canTalk,
       holding: talkHold.holding,
