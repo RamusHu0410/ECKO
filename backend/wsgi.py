@@ -50,6 +50,34 @@ if os.environ.get("VERCEL") or not os.access(_ROOT, os.W_OK):
     _use_writable_dir("NUMBA_CACHE_DIR", os.path.join(_TMP, "numba_cache"))
     _use_writable_dir("MPLCONFIGDIR", os.path.join(_TMP, "matplotlib"))
 
+
+def _use_copied_type_stubs():
+    """Let librosa start even though Vercel strips .pyi files from installed packages.
+
+    librosa builds its public API from its own ``__init__.pyi`` files (lazy_loader.attach_stub), so
+    without them ``import librosa`` fails ("Cannot load imports from non-existent stub"). Copies of
+    those files live in backend/vercel_stubs/; recopy them from site-packages if librosa is upgraded.
+    """
+    try:
+        import lazy_loader
+    except ImportError:
+        return
+    original = lazy_loader.attach_stub
+    stub_root = os.path.join(_ROOT, "vercel_stubs")
+
+    def attach_stub(package_name, filename):
+        stub = filename if filename.endswith("i") else f"{os.path.splitext(filename)[0]}.pyi"
+        if not os.path.exists(stub):
+            copy = os.path.join(stub_root, *package_name.split("."), "__init__.pyi")
+            if os.path.exists(copy):
+                filename = copy
+        return original(package_name, filename)
+
+    lazy_loader.attach_stub = attach_stub
+
+
+_use_copied_type_stubs()
+
 # Flask serves the Auth0 API under /api/... and everything else at the root (/upload, /talk/...).
 # Same split as the Vite dev proxy in Frontend/vite.config.ts.
 _KEEP_API_PREFIX = re.compile(r"^/api/(me|recordings|posts|users)(/|$)")
