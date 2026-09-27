@@ -1,0 +1,17 @@
+# Secrets and local-only data: never upload these to Vercel.
+**/.env
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.DS_Store
+.aider*
+backend/*.db
+backend/recordings
+backend/uploads
+backend/test_uploads
+backend/src/recordings
+backend/accompanist/debug_outputs
+backend/Kelvin's talk lab
+Frontend/dist
+external

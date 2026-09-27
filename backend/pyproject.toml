@@ -8,11 +8,9 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.141.1",
     "mido>=1.3.3",
     "pretty-midi>=0.2.11.post0",
     "pydantic>=2.13.5",
-    "uvicorn>=0.54.0",
     "flask>=3.1.3",
     "python-dotenv>=1.2.3",
     "numpy>=2.5.3",
@@ -26,8 +24,6 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "python-jose[cryptography]>=3.5.0",
     "flask-cors>=6.0.5",
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
     "elevenlabs>=2.69.0",
     "google-genai>=2.25.0",
 ]
@@ -38,13 +34,19 @@ pythonpath = ["."]
 [project.scripts]
 app = "app:main"
 
+[tool.vercel]
+# Vercel serves the Flask app named `app` in backend/wsgi.py (it calls create_app()).
+entrypoint = "wsgi:app"
+
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
+# Test-only tools: `uv sync` installs them locally, but they stay out of the Vercel bundle.
 dev = [
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.uv.workspace]

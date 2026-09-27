@@ -5,7 +5,7 @@
 ## How to run backend flask python server
 uv run flask --app src/app:create_app run --port 8000
 
-NEW: DATABASE_URL=sqlite:///$PWD/dev.db uv run flask --app src/app:create_app run --port 8000
+It needs `DATABASE_URL` (your TigerData service) in `backend/.env`; see docs/DATABASE.md.
 
 
 
@@ -77,7 +77,8 @@ One tip: since timing is in beats and it's one chord per bar (4 beats), a melody
 # App data: Auth0 + TigerData
 The backend now has an authenticated app layer alongside the accompaniment
 engine: **Auth0** for identity and **TigerData (PostgreSQL)** for users,
-recordings, and the discussion hub (posts / comments / likes).
+users' saved recordings (the audio files themselves live in `storage/`), and the
+discussion hub (posts / comments / likes).
 
 ## One-time setup
 
@@ -108,7 +109,7 @@ cd src
 
 ```bash
 cd src
-uv run pytest tests -v      # runs against sqlite + a stubbed Auth0 verifier
+uv run pytest tests -v      # runs against in-memory sqlite + a stubbed Auth0 verifier, never Tiger Cloud
 ```
 
 ## Docs

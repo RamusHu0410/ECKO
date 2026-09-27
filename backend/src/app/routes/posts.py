@@ -1,8 +1,15 @@
 """Discussion hub endpoints (Phases D, E, G).
 
 Posts, comments, and likes. A post can optionally showcase one of the
-author's own recordings.
+author's own recordings; attaching it shares it with everyone signed in, who
+can then play it through GET /api/posts/<id>/audio. (The recording itself stays
+private: /api/recordings/<id>/file is still owner-only.)
+
+Any valid Auth0 token for the API may use these; no scopes are required.
 """
+
+import uuid
+
 
 from flask import Blueprint, jsonify, request
 
@@ -12,6 +19,8 @@ from sqlalchemy.exc import IntegrityError
 from app.auth import require_auth, get_current_user
 from app.extensions import db
 from app.models import Comment, Post, PostLike, Recording
+from app.routes.account import AUDIO_TYPES
+from app.storage import get_storage
 
 bp = Blueprint("posts_api", __name__, url_prefix="/api/posts")
 
@@ -29,7 +38,7 @@ def _clamp_pagination():
 
 
 @bp.route("", methods=["POST"])
-@require_auth("write:posts")
+@require_auth()
 def create_post():
     user = get_current_user()
     data = request.get_json(silent=True) or {}
@@ -41,13 +50,17 @@ def create_post():
 
     recording_id = data.get("recording_id")
     if recording_id is not None:
-        recording = db.session.get(Recording, recording_id)
+        try:
+            recording_id = uuid.UUID(str(recording_id))
+        except ValueError:
+            return jsonify({"error": "'recording_id' must be a recording's id."}), 400
+        # Only your OWN recording: someone else's answers 404, like everywhere else, so
+        # nobody can find out which recording ids exist.
+        recording = db.session.execute(
+            db.select(Recording).filter_by(id=recording_id, user_id=user.id)
+        ).scalar_one_or_none()
         if recording is None:
             return jsonify({"error": "Recording not found."}), 404
-        # A user may only attach their OWN recording (Phase 9 rule:
-        # User A cannot attach User B's recording).
-        if recording.user_id != user.id:
-            return jsonify({"error": "You can only attach your own recordings."}), 403
 
     post = Post(
         user_id=user.id,
@@ -61,7 +74,7 @@ def create_post():
 
 
 @bp.route("", methods=["GET"])
-@require_auth("read:posts")
+@require_auth()
 def list_posts():
     """Feed, newest first. Supports ?page=&per_page= and ?search=."""
     page, per_page = _clamp_pagination()
@@ -88,8 +101,8 @@ def list_posts():
     )
 
 
-@bp.route("/<int:post_id>", methods=["GET"])
-@require_auth("read:posts")
+@bp.route("/<uuid:post_id>", methods=["GET"])
+@require_auth()
 def get_post(post_id):
     post = db.session.get(Post, post_id)
     if post is None:
@@ -97,8 +110,24 @@ def get_post(post_id):
     return jsonify(post.to_dict(include_comments=True))
 
 
-@bp.route("/<int:post_id>", methods=["DELETE"])
-@require_auth("delete:posts")
+@bp.route("/<uuid:post_id>/audio", methods=["GET"])
+@require_auth()
+def post_audio(post_id):
+    """Streams the recording the post showcases. Any signed-in user may: the author shared it."""
+    post = db.session.get(Post, post_id)
+    if post is None:
+        return jsonify({"error": "Post not found."}), 404
+    if post.recording is None:
+        return jsonify({"error": "This post has no recording."}), 404
+    extension = post.recording.file_path.rsplit(".", 1)[-1]
+    response = get_storage().send(post.recording.file_path, mimetype=AUDIO_TYPES.get(extension))
+    if response is None:
+        return jsonify({"error": "The recording's file is missing."}), 404
+    return response
+
+
+@bp.route("/<uuid:post_id>", methods=["DELETE"])
+@require_auth()
 def delete_post(post_id):
     user = get_current_user()
     post = db.session.get(Post, post_id)
@@ -108,13 +137,13 @@ def delete_post(post_id):
         return jsonify({"error": "You can only delete your own posts."}), 403
     db.session.delete(post)
     db.session.commit()
-    return jsonify({"status": "deleted", "id": post_id})
+    return jsonify({"status": "deleted", "id": str(post_id)})
 
 
 # ----------------------------- Comments --------------------------------
 
-@bp.route("/<int:post_id>/comments", methods=["GET"])
-@require_auth("read:posts")
+@bp.route("/<uuid:post_id>/comments", methods=["GET"])
+@require_auth()
 def list_comments(post_id):
     post = db.session.get(Post, post_id)
     if post is None:
@@ -128,8 +157,8 @@ def list_comments(post_id):
     return jsonify([c.to_dict() for c in comments])
 
 
-@bp.route("/<int:post_id>/comments", methods=["POST"])
-@require_auth("write:comments")
+@bp.route("/<uuid:post_id>/comments", methods=["POST"])
+@require_auth()
 def add_comment(post_id):
     user = get_current_user()
     post = db.session.get(Post, post_id)
@@ -147,8 +176,8 @@ def add_comment(post_id):
     return jsonify(comment.to_dict()), 201
 
 
-@bp.route("/<int:post_id>/comments/<int:comment_id>", methods=["DELETE"])
-@require_auth("delete:comments")
+@bp.route("/<uuid:post_id>/comments/<uuid:comment_id>", methods=["DELETE"])
+@require_auth()
 def delete_comment(post_id, comment_id):
     user = get_current_user()
     comment = db.session.get(Comment, comment_id)
@@ -158,13 +187,13 @@ def delete_comment(post_id, comment_id):
         return jsonify({"error": "You can only delete your own comments."}), 403
     db.session.delete(comment)
     db.session.commit()
-    return jsonify({"status": "deleted", "id": comment_id})
+    return jsonify({"status": "deleted", "id": str(comment_id)})
 
 
 # ------------------------------- Likes ---------------------------------
 
-@bp.route("/<int:post_id>/like", methods=["POST"])
-@require_auth("write:posts")
+@bp.route("/<uuid:post_id>/like", methods=["POST"])
+@require_auth()
 def like_post(post_id):
     user = get_current_user()
     post = db.session.get(Post, post_id)
@@ -178,7 +207,7 @@ def like_post(post_id):
     )
     if existing is not None:
         # Idempotent: already liked.
-        return jsonify({"status": "liked", "post_id": post_id, "like_count": len(post.likes)})
+        return jsonify({"status": "liked", "post_id": str(post_id), "like_count": len(post.likes)})
 
     like = PostLike(post_id=post_id, user_id=user.id)
     db.session.add(like)
@@ -189,11 +218,11 @@ def like_post(post_id):
         db.session.rollback()
 
     count = db.session.query(PostLike).filter_by(post_id=post_id).count()
-    return jsonify({"status": "liked", "post_id": post_id, "like_count": count})
+    return jsonify({"status": "liked", "post_id": str(post_id), "like_count": count})
 
 
-@bp.route("/<int:post_id>/like", methods=["DELETE"])
-@require_auth("write:posts")
+@bp.route("/<uuid:post_id>/like", methods=["DELETE"])
+@require_auth()
 def unlike_post(post_id):
     user = get_current_user()
     like = (
@@ -205,4 +234,4 @@ def unlike_post(post_id):
         db.session.delete(like)
         db.session.commit()
     count = db.session.query(PostLike).filter_by(post_id=post_id).count()
-    return jsonify({"status": "unliked", "post_id": post_id, "like_count": count})
+    return jsonify({"status": "unliked", "post_id": str(post_id), "like_count": count})
