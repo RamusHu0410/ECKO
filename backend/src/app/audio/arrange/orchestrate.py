@@ -69,8 +69,9 @@ class ChordSpan:
 def find_phrases(melody: Melody, phrase_bars: int = config.PHRASE_BARS) -> list[Phrase]:
     """Phrases of `phrase_bars` bars, counted afresh from every section start (so an introduction
     doesn't push the tune's phrases out of line; a phrase before a section start may be shorter).
-    Each has its peak: the bar where its highest note starts (the later one on a tie; the last bar
-    if it has no notes)."""
+    Each has its peak: the bar where its highest note starts (the later one on a tie). A phrase with
+    no tune in it (an introduction, a break) builds toward whatever comes next, so its peak is the
+    bar right after it, where the tune arrives (or its own last bar, at the very end)."""
     bpb, phrases = melody.beats_per_bar, []
     starts = sorted({0, *(s for s in melody.sections if 0 < s < melody.bars)})
     bounds = []
@@ -83,7 +84,7 @@ def find_phrases(melody: Melody, phrase_bars: int = config.PHRASE_BARS) -> list[
             top = max(n.pitch for n in inside)
             peak = max(int(n.start_beats // bpb) for n in inside if n.pitch == top)
         else:
-            peak = end - 1
+            peak = end if end < melody.bars else end - 1
         phrases.append(Phrase(start, end, peak))
     return phrases
 
@@ -495,12 +496,16 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
 def _second_part_start(melody: Melody, phrases: list[Phrase]) -> float:
     """Where the tune's second part begins, in beats: the second section if the transformations
     made one, else the second phrase, else halfway."""
-    later_sections = [s for s in melody.sections if s > 0]
+    bpb = melody.beats_per_bar
+    first_note = melody.notes[0].start_beats if melody.notes else 0.0
+    # the tune's own sections: not an introduction before its first note
+    later_sections = [s for s in melody.sections if s * bpb > first_note + 1e-9]
     if later_sections:
-        return later_sections[0] * melody.beats_per_bar
-    if len(phrases) > 1:
-        return phrases[1].start_bar * melody.beats_per_bar
-    return melody.bars * melody.beats_per_bar / 2
+        return later_sections[0] * bpb
+    later_phrases = [p for p in phrases if p.start_bar * bpb > first_note + 1e-9]
+    if later_phrases:
+        return later_phrases[0].start_bar * bpb
+    return (first_note + melody.end_beats) / 2
 
 
 def _figure(pattern: str, chord: ChordSpan, bpb: float, low: int, high: int):

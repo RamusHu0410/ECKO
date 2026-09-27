@@ -9,6 +9,7 @@ import pytest
 import soundfile as sf
 
 from app import create_app
+from app.audio.arrange.config import STYLES
 
 HUM_WAV = Path(__file__).resolve().parents[2] / "fixtures" / "hum_sample.wav"
 
@@ -157,7 +158,9 @@ def test_the_notes_graph_shows_what_intake_heard_and_what_the_song_plays(app, cl
     arranged = json.loads((run / "melody_transformed.json").read_text())["notes"]
     assert [n["midi"] for n in body["sung"]] == [n["pitch"] for n in heard]  # what intake heard
     assert [n["midi"] for n in body["played"]] == [n["pitch"] for n in arranged]  # what the song plays
-    assert body["played"][0]["start"] == body["sung"][0]["start"] == body["contour"]["segments"][0]["start"]
+    assert body["sung"][0]["start"] == body["contour"]["segments"][0]["start"]
+    intro_seconds = STYLES["classical"].intro_bars * 4 * 60 / json.loads((run / "melody_transformed.json").read_text())["tempo_bpm"]
+    assert body["played"][0]["start"] == pytest.approx(body["sung"][0]["start"] + intro_seconds, abs=0.01)  # after the intro
 
 
 def test_upload_uses_intake_and_the_song_reuses_its_melody(app, client, fake_render, monkeypatch):

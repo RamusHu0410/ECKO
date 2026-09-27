@@ -34,7 +34,7 @@ def test_final_is_not_silent_or_clipping(rendered):
 
 def test_final_covers_the_whole_piece_plus_the_reverb_tail(rendered):
     _, result = rendered
-    piece = 12 * 4 * 60 / 92  # cinematic restates the last phrase: 12 bars at 92 bpm
+    piece = 15 * 4 * 60 / 92  # 2-bar intro, the tune, its last phrase restated, a 1-bar ending: 15 bars at 92 bpm
     assert piece + 3 < result.duration_seconds < piece + 12
 
 

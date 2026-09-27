@@ -41,6 +41,9 @@ class Melody:
     # Bars (0-based) where a new section starts, e.g. where the tune begins after an introduction
     # the transformations added. Not part of the contract's melody.json; only written when set.
     sections: tuple[int, ...] = ()
+    # The piece's length in bars when it runs on after its last note (an ending that lets the final
+    # chord ring). Not part of the contract's melody.json either; only written when set.
+    length_bars: int | None = None
 
     @property
     def beats_per_bar(self) -> float:
@@ -52,7 +55,7 @@ class Melody:
 
     @property
     def bars(self) -> int:
-        return max(1, math.ceil(self.end_beats / self.beats_per_bar - 1e-9))
+        return max(1, math.ceil(self.end_beats / self.beats_per_bar - 1e-9), self.length_bars or 0)
 
     @property
     def seconds_per_beat(self) -> float:
@@ -68,6 +71,8 @@ class Melody:
             data["sections"] = list(self.sections)
         else:
             del data["sections"]
+        if self.length_bars is None:
+            del data["length_bars"]
         return data
 
 
@@ -181,7 +186,10 @@ def melody_from_dict(data: dict) -> Melody:
         sections = tuple(sorted({int(bar) for bar in data.get("sections", ()) if int(bar) >= 0}))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"'sections' must be a list of bar numbers: {exc}") from exc
-    return Melody(tempo_bpm, key_name, time_signature, tuning, tuple(notes), sections)
+    length = data.get("length_bars")
+    if length is not None and (not isinstance(length, int) or length < 1):
+        raise ValueError("'length_bars' must be a whole number of bars.")
+    return Melody(tempo_bpm, key_name, time_signature, tuning, tuple(notes), sections, length)
 
 
 def load_melody(path: str | Path) -> Melody:

@@ -135,6 +135,12 @@ class Style:
     transforms: list[tuple[str, dict]]
     orchestration: Orchestration
     effects: Effects
+    # The song's shape around the tune (transforms.fill and transforms.frame): a short tune is
+    # repeated to at least fill_bars before the style's transformations, then the accompaniment
+    # plays intro_bars on its own, building into the tune, and outro_bars let the last chord ring.
+    fill_bars: int = 8
+    intro_bars: int = 2
+    outro_bars: int = 1
 
 
 STYLES: dict[str, Style] = {
@@ -153,6 +159,7 @@ STYLES: dict[str, Style] = {
                                     figure=PIANO, figure_pattern="arpeggio", double=FLUTE, double_octave=1,
                                     bass_pattern="pulse"),
         effects=Effects(compressor_threshold_db=-20.0, compressor_ratio=3.0, reverb_room_size=0.5, reverb_wet=0.2, low_shelf_gain_db=1.5, tail_seconds=2.0),
+        intro_bars=0,  # the additive build-up is its introduction
     ),
     # A rising sequence of the opening figure introduces the tune.
     "classical": Style(
@@ -161,6 +168,7 @@ STYLES: dict[str, Style] = {
                                     figure=HARP, figure_pattern="alberti", double=VIOLIN, double_octave=0,
                                     timpani=True, bass_pattern="half", dynamics=(52, 96)),
         effects=Effects(compressor_threshold_db=-16.0, compressor_ratio=1.8, reverb_room_size=0.75, reverb_wet=0.28, reverb_damping=0.5, low_shelf_gain_db=1.0, tail_seconds=3.0),
+        intro_bars=1,  # the rising sequence is most of its introduction
     ),
     # Verse twice, with a backbeat.
     "pop": Style(
@@ -179,6 +187,7 @@ STYLES: dict[str, Style] = {
                                     volumes={"melody": 115, "melody_double": 75, "strings_pad": 55, "figure": 100,
                                              "bass": 70, "brass": 55, "timpani": 60, "percussion": 60}),
         effects=Effects(compressor_threshold_db=-18.0, compressor_ratio=2.0, reverb_room_size=0.6, reverb_wet=0.22, low_shelf_hz=150.0, low_shelf_gain_db=0.5),
+        intro_bars=1,
     ),
 }
 

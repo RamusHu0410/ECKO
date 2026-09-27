@@ -31,7 +31,7 @@ from .melody import load_melody, save_melody_json, save_melody_midi
 from .orchestrate import TRACKS, orchestrate
 from .render import render
 from .settings import DEFAULT, ArrangeSettings
-from .transforms import MelodyTooLong, apply_operations, apply_settings
+from .transforms import MelodyTooLong, apply_operations, apply_settings, fill, frame
 from .validate import validate_midi
 
 logger = logging.getLogger(__name__)
@@ -174,6 +174,11 @@ def _arranged(melody, preset, settings: ArrangeSettings):
         fell_back = True
         warnings.append(f"The tempo/key changes couldn't be applied ({exc}); using the melody as sung.")
     try:
+        melody = fill(melody, preset.fill_bars)  # a short hum becomes a tune long enough to build
+    except Exception as exc:  # noqa: BLE001
+        fell_back = True
+        warnings.append(f"The tune couldn't be lengthened ({exc}); using it as sung.")
+    try:
         transformed = apply_operations(melody, preset.transforms)
     except MelodyTooLong:  # a long tune doesn't need lengthening: not a failure
         transformed = melody
@@ -181,7 +186,7 @@ def _arranged(melody, preset, settings: ArrangeSettings):
     except Exception as exc:  # noqa: BLE001 - any failure: carry on with the melody as sung
         transformed, fell_back = melody, True
         warnings.append(f"The transformations failed ({exc}); arranging the untransformed melody.")
-    return transformed, warnings, fell_back
+    return frame(transformed, preset.intro_bars, preset.outro_bars), warnings, fell_back
 
 
 def _orchestrate(run: Path, preset, _soundfont, settings: ArrangeSettings) -> StepReport:

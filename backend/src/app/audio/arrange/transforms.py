@@ -281,6 +281,39 @@ def _fold(pitch: int) -> int:
     return pitch
 
 
+# --- the song's shape around the tune -----------------------------------------------------------
+
+
+def fill(melody: Melody, bars: int, phrase_bars: int = 4) -> Melody:
+    """A tune shorter than `bars` repeated until it's at least that long (a hum is often only a few
+    bars; a song needs room to build), each repeat marked as a new section. A tune that's longer,
+    but not a whole number of phrases, is rounded up to one with rests."""
+    bpb = melody.beats_per_bar
+    length = melody.bars
+    if length > bars // 2:
+        whole = math.ceil(length / phrase_bars) * phrase_bars
+        return replace(melody, length_bars=whole) if whole != length else melody
+    unit = next(u for u in (1, 2, 4) if u >= length) if length < phrase_bars else length
+    copies = min(math.ceil(bars / unit), 8)
+    notes = [Note(n.pitch, n.start_beats + k * unit * bpb, n.duration_beats, n.velocity) for k in range(copies) for n in melody.notes]
+    sections = sorted({s + k * unit for k in range(copies) for s in (melody.sections or (0,))})
+    return replace(melody, notes=tuple(notes), sections=tuple(sections), length_bars=copies * unit)
+
+
+def frame(melody: Melody, intro_bars: int, outro_bars: int) -> Melody:
+    """Room around the tune: `intro_bars` for the band alone before it, building into its first
+    note, and `outro_bars` after it for the last chord to ring."""
+    if not intro_bars and not outro_bars:
+        return melody
+    shift = intro_bars * melody.beats_per_bar
+    notes = [Note(n.pitch, n.start_beats + shift, n.duration_beats, n.velocity) for n in melody.notes]
+    sections = [0] + [s + intro_bars for s in (melody.sections or (0,))]
+    length = intro_bars + melody.bars + outro_bars
+    if outro_bars:
+        sections.append(length - outro_bars)
+    return replace(melody, notes=tuple(notes), sections=tuple(sorted(set(sections))), length_bars=length)
+
+
 def fit_pitches(pitches: list[int], low: int, high: int, bias: int = 0) -> list[int]:
     """Move a line into an instrument's range: the whole line by octaves so its middle sits in the
     range (keeping its shape), then any note still outside folded in by octaves. `bias` (semitones)

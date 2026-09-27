@@ -44,8 +44,10 @@ def test_a_hum_through_the_whole_pipeline(tmp_path, soundfont):
     assert (info.subtype, info.samplerate, info.channels) == ("PCM_24", 48_000, 2)
     audio, _ = sf.read(result.final_wav_path)
     assert np.max(np.abs(audio)) == pytest.approx(0.9, abs=1e-3)
-    tune_seconds = melody.bars * melody.beats_per_bar * melody.seconds_per_beat
-    assert tune_seconds < result.duration_seconds < tune_seconds + 5  # plus the piano style's reverb tail
+    song = load_melody(run / "melody_transformed.json")  # the tune, filled out and framed into a song
+    song_seconds = song.bars * song.beats_per_bar * song.seconds_per_beat
+    assert song.bars >= 8 + STYLES["piano"].intro_bars + STYLES["piano"].outro_bars
+    assert song_seconds < result.duration_seconds < song_seconds + 5  # plus the piano style's reverb tail
 
     log = json.loads((run / "run.json").read_text())
     assert [s["step"] for s in log["steps"]] == ["intake", "transform", "orchestrate", "render", "effects"]

@@ -12,6 +12,7 @@ from app.audio.arrange import arrange_and_render, steps
 from app.audio.errors import PipelineError
 from app.audio.arrange import effects as fx
 from app.audio.arrange.files import write_atomically
+from app.audio.arrange.config import STYLES
 from app.audio.arrange.melody import load_melody
 
 from conftest import FIXTURE_JSON
@@ -26,7 +27,9 @@ def test_transform_failure_arranges_the_untransformed_melody(tmp_path, fake_rend
     result = arrange_and_render(str(FIXTURE_JSON), "cinematic", str(tmp_path))
     assert result.fell_back is True
     assert any("transformations failed" in w for w in result.warnings)
-    assert load_melody(tmp_path / "melody_transformed.json") == melody
+    arranged = load_melody(tmp_path / "melody_transformed.json")
+    intro = STYLES["cinematic"].intro_bars * melody.beats_per_bar
+    assert [(n.pitch, n.start_beats - intro) for n in arranged.notes] == [(n.pitch, n.start_beats) for n in melody.notes]
     assert sf.info(result.final_wav_path).subtype == "PCM_24"
 
 
