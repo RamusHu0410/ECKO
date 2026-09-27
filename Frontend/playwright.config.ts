@@ -11,6 +11,9 @@ export default defineConfig({
   timeout: 60_000,
   use: {
     baseURL: 'http://localhost:5198',
+    // every test starts as a returning visitor, so the first-visit guide doesn't cover the page
+    // (tests/tutorial.spec.ts clears this to test the guide itself)
+    storageState: { cookies: [], origins: [{ origin: 'http://localhost:5198', localStorage: [{ name: 'ecko:tutorial-seen', value: '1' }] }] },
     channel: 'chrome',
     permissions: ['microphone'],
     launchOptions: {

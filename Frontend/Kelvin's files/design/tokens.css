@@ -46,6 +46,10 @@
   --glass-rim-disc-spread: 55deg;
   --glass-inset-top: rgba(255, 255, 255, 0.9);
   --glass-inset-bottom: rgba(120, 100, 80, 0.12);
+  /* The Sound slider's track, left to right: warm classical piano, cool synth, deep creepy violet */
+  --sound-piano: rgba(232, 169, 76, 0.85);
+  --sound-synth: rgba(110, 150, 232, 0.8);
+  --sound-creepy: rgba(104, 58, 150, 0.88);
   /* The page is white, so a faint dark hairline outside the bright rim keeps the glass edge
      visible, as in iOS light mode */
   --glass-edge-dark: rgba(40, 28, 18, 0.2);

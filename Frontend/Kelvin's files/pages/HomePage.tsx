@@ -10,6 +10,7 @@ import GlassButton from '../components/GlassButton/GlassButton'
 import GlassMessage from '../components/GlassMessage/GlassMessage'
 import SoundSlider from '../components/SoundSlider/SoundSlider'
 import GnomePicker from '../components/GnomePicker/GnomePicker'
+import Tutorial, { useTutorial } from '../components/Tutorial/Tutorial'
 import { useStudio } from '../hooks/useStudio'
 
 /** The 3D turntable loads on its own (three.js is large), so the intro shows at once. */
@@ -37,12 +38,14 @@ import {
  */
 export default function HomePage() {
   const studio = useStudio()
+  const guide = useTutorial() // opens by itself on a first visit
   const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings, sound } = studio
   const { phase, micProblem, uploadFailure } = session
 
   return (
     <main>
-      <Intro reducedMotion={reducedMotion} />
+      <Intro reducedMotion={reducedMotion} onShowGuide={guide.show} />
+      <AnimatePresence>{guide.open && <Tutorial key="guide" onClose={guide.close} reducedMotion={reducedMotion} />}</AnimatePresence>
 
       {/* the studio, where the recording happens; the intro's links land here (and focus it, so the
           spacebar records straight away) */}
@@ -164,9 +167,6 @@ export default function HomePage() {
               >
                 <GlassButton onClick={studio.replay}>Replay</GlassButton>
                 <GlassButton onClick={session.reset}>Re-record</GlassButton>
-                <GlassButton aria-pressed={sound.advanced} onClick={sound.toggleAdvanced}>
-                  {sound.advanced ? 'Hide advanced' : 'Advanced'}
-                </GlassButton>
               </motion.div>
             )}
           </AnimatePresence>
@@ -177,15 +177,6 @@ export default function HomePage() {
           {hasSong && (
             <motion.div key="gnome-picker" className="mt-4" {...appear}>
               <GnomePicker value={gnome.id} disabled={talk.busy} onChange={gnome.choose} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Advanced: the sound slider, blending the song anywhere from classical to creepy */}
-        <AnimatePresence>
-          {hasSong && sound.advanced && (
-            <motion.div key="sound-slider" className="mt-4 flex w-full justify-center" {...appear}>
-              <SoundSlider value={sound.mix} disabled={!sound.blending} onChange={sound.setMix} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -210,7 +201,16 @@ export default function HomePage() {
         <AnimatePresence>
           {hasSong && (
             <motion.div key="adjustments" className="mt-8 flex w-full flex-col items-center gap-6" {...appear}>
-              <AdjustmentsPanel settings={settings} onChange={studio.adjust} />
+              <AdjustmentsPanel
+                settings={settings}
+                onChange={studio.adjust}
+                advanced={{
+                  open: sound.advanced,
+                  onToggle: sound.toggleAdvanced,
+                  // the sound slider, blending the song anywhere from classical to creepy
+                  children: <SoundSlider value={sound.mix} disabled={!sound.blending} onChange={sound.setMix} />,
+                }}
+              />
               {session.notes && <NotesGraph notes={session.notes} />}
             </motion.div>
           )}
