@@ -21,6 +21,8 @@ PIANO, VIBRAPHONE = 0, 11
 VIOLIN, CELLO, CONTRABASS, PIZZICATO = 40, 42, 43, 45
 STRING_ENSEMBLE, SLOW_STRINGS = 48, 49
 ACOUSTIC_BASS, FINGER_BASS = 32, 33
+STEEL_GUITAR = 25
+HARP, TIMPANI = 46, 47
 TRUMPET, FRENCH_HORN, BRASS_SECTION = 56, 60, 61
 OBOE, FLUTE = 68, 73
 
@@ -42,6 +44,9 @@ INSTRUMENT_RANGES: dict[int, tuple[int, int]] = {
     BRASS_SECTION: (46, 77),
     OBOE: (58, 91),
     FLUTE: (60, 96),
+    STEEL_GUITAR: (40, 76),
+    HARP: (36, 91),
+    TIMPANI: (38, 57),
 }
 
 # General MIDI percussion (channel 10) notes used for orchestral hits.
@@ -54,11 +59,17 @@ class Orchestration:
     pad: int  # sustained strings under it
     bass: int
     brass: int  # swells into phrase peaks
+    figure: int  # the moving accompaniment (ostinato, arpeggio, strumming...)
+    double: int  # a second instrument on the tune, from the second section on
+    figure_pattern: str = "ostinato"  # "ostinato" | "alberti" | "arpeggio" | "comping" | "broken"
+    double_octave: int = 0  # the doubling's octave relative to the lead: -1, 0 or 1
+    timpani: bool = False  # timpani on phrase starts and rolling into each peak
     bass_pattern: str = "whole"  # "whole" | "half" | "pulse" (eighths)
     percussion: str = "hits"  # "hits" (downbeat hits, rolls into peaks) | "groove" (backbeat)
     dynamics: tuple[int, int] = (58, 104)  # velocity at a phrase's start, and at its peak
     volumes: dict[str, int] = field(
-        default_factory=lambda: {"melody": 110, "strings_pad": 78, "bass": 92, "brass": 84, "percussion": 88}
+        default_factory=lambda: {"melody": 110, "melody_double": 90, "strings_pad": 70, "figure": 110, "bass": 92,
+                                 "brass": 84, "timpani": 92, "percussion": 84}
     )
 
 
@@ -93,32 +104,43 @@ STYLES: dict[str, Style] = {
     # Broad and swelling: the tune, then its last phrase an octave higher as the climax.
     "cinematic": Style(
         transforms=[("restate", {"bars": 4, "steps": 7})],
-        orchestration=Orchestration(lead=VIOLIN, pad=SLOW_STRINGS, bass=CONTRABASS, brass=BRASS_SECTION),
+        orchestration=Orchestration(lead=VIOLIN, pad=SLOW_STRINGS, bass=CONTRABASS, brass=BRASS_SECTION,
+                                    figure=STRING_ENSEMBLE, figure_pattern="ostinato",
+                                    double=FRENCH_HORN, double_octave=-1, timpani=True, bass_pattern="half"),
         effects=Effects(reverb_room_size=0.85, reverb_wet=0.33, reverb_damping=0.4, low_shelf_gain_db=2.5, tail_seconds=3.5),
     ),
     # Minimalist: an additive build-up of the opening bar (arvo), then the tune, over a pulse.
     "modern": Style(
         transforms=[("additive", {"bars": 1})],
-        orchestration=Orchestration(lead=VIBRAPHONE, pad=STRING_ENSEMBLE, bass=PIZZICATO, brass=FRENCH_HORN, bass_pattern="pulse"),
+        orchestration=Orchestration(lead=VIBRAPHONE, pad=STRING_ENSEMBLE, bass=PIZZICATO, brass=FRENCH_HORN,
+                                    figure=PIANO, figure_pattern="arpeggio", double=FLUTE, double_octave=1,
+                                    bass_pattern="pulse"),
         effects=Effects(compressor_threshold_db=-20.0, compressor_ratio=3.0, reverb_room_size=0.5, reverb_wet=0.2, low_shelf_gain_db=1.5, tail_seconds=2.0),
     ),
     # A rising sequence of the opening figure introduces the tune.
     "classical": Style(
         transforms=[("sequence", {"bars": 1, "steps": [1, 2]})],
-        orchestration=Orchestration(lead=FLUTE, pad=STRING_ENSEMBLE, bass=CELLO, brass=FRENCH_HORN, bass_pattern="half", dynamics=(52, 96)),
+        orchestration=Orchestration(lead=FLUTE, pad=STRING_ENSEMBLE, bass=CELLO, brass=FRENCH_HORN,
+                                    figure=HARP, figure_pattern="alberti", double=VIOLIN, double_octave=0,
+                                    timpani=True, bass_pattern="half", dynamics=(52, 96)),
         effects=Effects(compressor_threshold_db=-16.0, compressor_ratio=1.8, reverb_room_size=0.75, reverb_wet=0.28, reverb_damping=0.5, low_shelf_gain_db=1.0, tail_seconds=3.0),
     ),
     # Verse twice, with a backbeat.
     "pop": Style(
         transforms=[("repeat", {"times": 2})],
-        orchestration=Orchestration(lead=PIANO, pad=STRING_ENSEMBLE, bass=FINGER_BASS, brass=BRASS_SECTION, bass_pattern="pulse", percussion="groove", dynamics=(66, 104)),
+        orchestration=Orchestration(lead=PIANO, pad=STRING_ENSEMBLE, bass=FINGER_BASS, brass=BRASS_SECTION,
+                                    figure=STEEL_GUITAR, figure_pattern="comping", double=STRING_ENSEMBLE, double_octave=1,
+                                    bass_pattern="pulse", percussion="groove", dynamics=(66, 104)),
         effects=Effects(compressor_threshold_db=-22.0, compressor_ratio=4.0, compressor_attack_ms=10.0, reverb_room_size=0.35, reverb_wet=0.15, low_shelf_hz=90.0, low_shelf_gain_db=3.0, tail_seconds=1.5),
     ),
     # The tune as sung, gently accompanied.
     "piano": Style(
         transforms=[],
-        orchestration=Orchestration(lead=PIANO, pad=STRING_ENSEMBLE, bass=CELLO, brass=FRENCH_HORN, dynamics=(50, 88),
-                                    volumes={"melody": 115, "strings_pad": 60, "bass": 70, "brass": 55, "percussion": 60}),
+        orchestration=Orchestration(lead=PIANO, pad=STRING_ENSEMBLE, bass=CELLO, brass=FRENCH_HORN,
+                                    figure=PIANO, figure_pattern="broken", double=STRING_ENSEMBLE, double_octave=0,
+                                    dynamics=(50, 88),
+                                    volumes={"melody": 115, "melody_double": 75, "strings_pad": 55, "figure": 100,
+                                             "bass": 70, "brass": 55, "timpani": 60, "percussion": 60}),
         effects=Effects(compressor_threshold_db=-18.0, compressor_ratio=2.0, reverb_room_size=0.6, reverb_wet=0.22, low_shelf_hz=150.0, low_shelf_gain_db=0.5),
     ),
 }

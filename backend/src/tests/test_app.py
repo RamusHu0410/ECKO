@@ -3,11 +3,9 @@
 import os
 from io import BytesIO
 
-import numpy as np
 import pytest
 from talk_fakes import TUNE, write_hum
 
-from app.routes import main as main_routes
 
 
 def test_health_endpoint(client):
@@ -35,43 +33,25 @@ def test_upload_rejects_non_wav_files(client):
     assert response.get_json()["error"] == "Invalid file type. Only .wav files are allowed."
 
 
-def _fake_analysis(melody, **extra):
-    def analyze(_filepath, target_sr=22050, keep_analysis=False):
-        return {"melody": melody, "key": "C", "mode": "major", "tempo": 120.0, "tuning_cents": 0, "warnings": [],
-                "analysis": {"pitch": {"voiced_flag": [np.bool_(True), np.bool_(False)]}, "non_finite": np.float64("nan")}, **extra}
-    return analyze
-
-
 def _upload(client, data=b"RIFFfakeWAVE", name="recording.wav"):
     return client.post("/upload", data={"file": (BytesIO(data), name)}, content_type="multipart/form-data")
 
 
-def test_upload_serializes_numpy_boolean_analysis(client, monkeypatch):
-    """Regression test for NumPy bool values causing upload responses to 500."""
-    monkeypatch.setattr(main_routes, "analyze_audio_file", _fake_analysis([{"hz": 60.0, "start": 0.0, "duration": 0.5}]))  # a hum with no tune is a 400 now
-    monkeypatch.setattr(main_routes, "clean_wav", lambda path, target_sr: path)
+def test_upload_hands_the_accompanist_beats_from_intake(client, monkeypatch, tmp_path_factory):
+    """/upload's melody comes from the pipeline's intake (app/audio/intake) and goes straight to
+    /accompaniment/generate, which counts beats (MIDI note in "hz"). Here intake is the fixture
+    melody: 8 bars of D minor at 92 BPM, starting D4 for a dotted quarter."""
+    from app.audio import pipeline
 
-    response = _upload(client)
-
+    monkeypatch.setitem(pipeline.INTAKES, "intake", pipeline._fixture_transcribe)
+    hum = tmp_path_factory.mktemp("hums") / "hum.wav"
+    write_hum(hum)  # a real WAV, so it passes the upload's checks
+    response = _upload(client, hum.read_bytes())
     assert response.status_code == 201
-    analysis = response.get_json()["audio_analysis"]
-    assert analysis["pitch"]["voiced_flag"] == [True, False]
-    assert analysis["non_finite"] is None
-
-
-def test_upload_hands_the_accompanist_beats_not_seconds(client, monkeypatch):
-    """/upload's melody goes straight to /accompaniment/generate, which counts beats. It used to
-    be seconds, so the accompaniment played at the wrong speed (twice as fast at 120 BPM)."""
-    seconds = [{"hz": 60.0, "start": 1.0, "duration": 0.5}, {"hz": 64.0, "start": 1.5, "duration": 1.0}]
-    monkeypatch.setattr(main_routes, "analyze_audio_file", _fake_analysis(seconds))
-    monkeypatch.setattr(main_routes, "clean_wav", lambda path, target_sr: path)
-
-    reply = _upload(client).get_json()
-
-    assert reply["tempo"] == 120.0
-    assert reply["melody_seconds"] == seconds
-    # at 120 BPM a beat is half a second, and the first note becomes beat 0
-    assert reply["melody"] == [{"hz": 60.0, "start": 0.0, "duration": 1.0}, {"hz": 64.0, "start": 1.0, "duration": 2.0}]
+    reply = response.get_json()
+    assert reply["tempo"] == 92.0 and (reply["key"], reply["mode"]) == ("D", "minor")
+    assert reply["melody"][:2] == [{"hz": 62.0, "start": 0.0, "duration": 1.5}, {"hz": 64.0, "start": 1.5, "duration": 0.5}]
+    assert reply["run_id"]
 
 
 def test_a_real_hum_goes_from_upload_to_accompaniment(client, tmp_path_factory):
@@ -84,7 +64,6 @@ def test_a_real_hum_goes_from_upload_to_accompaniment(client, tmp_path_factory):
     reply = upload.get_json()
     assert [round(n["hz"]) for n in reply["melody"]] == [midi for midi, _ in TUNE]
     assert reply["key"] == "C" and reply["mode"] == "major"
-    assert reply["clean_filename"].endswith("_clean.wav")
 
     generated = client.post(
         "/accompaniment/generate",

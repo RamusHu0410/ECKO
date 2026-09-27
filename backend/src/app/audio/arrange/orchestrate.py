@@ -1,6 +1,8 @@
 """The melody, orchestrated: a multi-track General MIDI arrangement.
 
-Tracks (in this order): melody, strings_pad, bass, brass, percussion.
+Tracks (in this order): melody, melody_double (a second instrument on the tune), strings_pad,
+figure (the moving accompaniment: ostinato, arpeggio, strumming...), bass, brass, timpani (in the
+styles that have it), percussion, then any instruments a listener added.
 
 The piece is read in phrases of PHRASE_BARS bars. Each phrase peaks at the bar holding its
 highest melody note: dynamics build toward that bar and ease off after it, the brass swells into
@@ -29,10 +31,20 @@ from .transforms import fit_pitches
 
 logger = logging.getLogger(__name__)
 
-TRACKS = ("melody", "strings_pad", "bass", "brass", "percussion")  # then any extra parts the settings add
+TRACKS = ("melody", "melody_double", "strings_pad", "figure", "bass", "brass", "percussion")  # always there
 # Ranges for instruments a listener adds that INSTRUMENT_RANGES doesn't list, by what they play.
 _DEFAULT_RANGES = {"lead": (55, 91), "chords": (48, 79), "bass": (28, 55)}
-PANS = {"melody": 64, "strings_pad": 48, "bass": 64, "brass": 84, "percussion": 64}
+PANS = {"melody": 64, "melody_double": 76, "strings_pad": 46, "figure": 54, "bass": 64, "brass": 84,
+        "timpani": 70, "percussion": 64}
+PAD_PROGRAMS = range(88, 96)  # General MIDI's pads: slow to speak, so the tune gets doubled from the start
+
+
+def track_names(orchestration: Orchestration) -> list[str]:
+    """The tracks this orchestration writes, in order (before any a listener adds)."""
+    names = list(TRACKS)
+    if orchestration.timpani:
+        names.insert(names.index("percussion"), "timpani")
+    return names
 _QUALITIES = {"major": (0, 4, 7), "minor": (0, 3, 7), "diminished": (0, 3, 6), "augmented": (0, 4, 8)}
 
 
@@ -268,17 +280,33 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
     midi = empty_midi(melody)
     tracks = {
         "melody": pretty_midi.Instrument(orchestration.lead if settings.lead is None else settings.lead, name="melody"),
+        "melody_double": pretty_midi.Instrument(orchestration.double, name="melody_double"),
         "strings_pad": pretty_midi.Instrument(orchestration.pad, name="strings_pad"),
+        "figure": pretty_midi.Instrument(orchestration.figure, name="figure"),
         "bass": pretty_midi.Instrument(orchestration.bass, name="bass"),
         "brass": pretty_midi.Instrument(orchestration.brass, name="brass"),
+        **({"timpani": pretty_midi.Instrument(config.TIMPANI, name="timpani")} if orchestration.timpani else {}),
         "percussion": pretty_midi.Instrument(0, is_drum=True, name="percussion"),
     }
 
     # Melody: moved into the lead's range as a whole (shape kept), shaped by the phrase curve.
     low, high = INSTRUMENT_RANGES.get(tracks["melody"].program, _DEFAULT_RANGES["lead"])
-    for n, p in zip(melody.notes, fit_pitches([n.pitch for n in melody.notes], low, high, bias=settings.transpose)):
+    lead_pitches = fit_pitches([n.pitch for n in melody.notes], low, high, bias=settings.transpose)
+    for n, p in zip(melody.notes, lead_pitches):
         velocity = _vel(level(n.start_beats) * n.velocity / 80)
         tracks["melody"].notes.append(pretty_midi.Note(velocity, p, sec(n.start_beats), sec(n.end_beats)))
+
+    # Doubling: a second instrument joins the tune from the second section (or phrase) on, so the
+    # sound grows; from the start when the lead is a pad, which alone would blur the tune.
+    low, high = INSTRUMENT_RANGES.get(orchestration.double, _DEFAULT_RANGES["lead"])
+    target = [p + 12 * orchestration.double_octave for p in lead_pitches]
+    if not all(low <= p <= high for p in target):
+        target = fit_pitches(target, low, high, bias=round(sum(target) / len(target) - (low + high) / 2))
+    joins = 0.0 if tracks["melody"].program in PAD_PROGRAMS else _second_part_start(melody, phrases)
+    doubled = [(n, p) for n, p in zip(melody.notes, target) if n.start_beats >= joins] or list(zip(melody.notes, target))
+    for n, p in doubled:
+        velocity = _vel(level(n.start_beats) * n.velocity / 80 * 0.85)
+        tracks["melody_double"].notes.append(pretty_midi.Note(velocity, p, sec(n.start_beats), sec(n.end_beats)))
 
     # Strings pad: each chord held, voice-led (the voicing that moves least from the last one).
     low, high = INSTRUMENT_RANGES[orchestration.pad]
@@ -292,6 +320,14 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
             tracks["strings_pad"].notes.append(
                 pretty_midi.Note(velocity, p, sec(chord.start_beats), sec(chord.start_beats + chord.duration_beats))
             )
+
+    # Figure: the moving accompaniment, in the style's pattern, on each chord.
+    low, high = INSTRUMENT_RANGES.get(orchestration.figure, _DEFAULT_RANGES["chords"])
+    for chord in chords:
+        for at, length, pitches, accent in _figure(orchestration.figure_pattern, chord, bpb, low, high):
+            velocity = _vel(level(at) * 0.9 * accent)
+            for p in pitches:
+                tracks["figure"].notes.append(pretty_midi.Note(velocity, p, sec(at), sec(at + length)))
 
     # Bass: the chord root, in the bass's range, near the previous root.
     low, high = INSTRUMENT_RANGES[orchestration.bass]
@@ -338,6 +374,23 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
         for p in voicing:
             brass.notes.append(pretty_midi.Note(_vel(low_dyn), p, sec(last), sec(last + bpb)))
     brass.control_changes.sort(key=lambda cc: cc.time)
+
+    # Timpani: the chord's root on every phrase's first downbeat, and a roll into each peak.
+    if orchestration.timpani:
+        timpani = tracks["timpani"]
+        low, high = INSTRUMENT_RANGES[config.TIMPANI]
+
+        def drum(beat: float, velocity: float, length: float = 1.0) -> None:
+            root = _nearest_octave(_chord_at(chords, beat).root, (low + high) // 2, low, high)
+            timpani.notes.append(pretty_midi.Note(_vel(velocity), root, sec(beat), sec(beat + length)))
+
+        for phrase in phrases:
+            drum(phrase.start_bar * bpb, _level(phrase.start_bar, phrase, low_dyn, high_dyn))
+        for target in targets:
+            if target >= 1:
+                for i in range(8):  # a roll: 32nd notes through the beat before, growing
+                    drum(target * bpb - 1 + i * 0.125, 40 + 8 * i, length=0.12)
+            drum(target * bpb, high_dyn + 8, length=2.0 if target == melody.bars - 1 else 1.0)
 
     # Percussion, on the General MIDI drum channel.
     drums = tracks["percussion"]
@@ -395,6 +448,52 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
         logger.debug("  track %-11s program %3d%s: %3d notes, pitch %d-%d", name, track.program,
                      " (drums)" if track.is_drum else "", len(track.notes), min(pitches), max(pitches))
     return midi, warnings
+
+
+def _second_part_start(melody: Melody, phrases: list[Phrase]) -> float:
+    """Where the tune's second part begins, in beats: the second section if the transformations
+    made one, else the second phrase, else halfway."""
+    later_sections = [s for s in melody.sections if s > 0]
+    if later_sections:
+        return later_sections[0] * melody.beats_per_bar
+    if len(phrases) > 1:
+        return phrases[1].start_bar * melody.beats_per_bar
+    return melody.bars * melody.beats_per_bar / 2
+
+
+def _figure(pattern: str, chord: ChordSpan, bpb: float, low: int, high: int):
+    """The accompaniment figure over one chord: (beat, length, pitches, accent) events, in step with
+    the bar (the pattern restarts on every downbeat)."""
+    third, fifth = ((pc - chord.root) % 12 for pc in chord.pitch_classes[1:3])
+    register = {"ostinato": 0.2, "broken": 0.15, "alberti": 0.3, "arpeggio": 0.35, "comping": 0.4}[pattern]
+    root = _nearest_octave(chord.root, round(low + (high - low) * register), low, max(low + 11, high - 12))
+    r, t, f, o = root, root + third, root + fifth, root + 12
+    steps = {
+        "ostinato": (0.5, [[r], [f], [o], [f]], 0.4),  # driving strings: root fifth octave fifth
+        "alberti": (0.5, [[r], [f], [t + 12 if t + 12 <= high else t], [f]], 0.45),  # low, high, middle, high
+        "arpeggio": (0.5, [[r], [t], [f], [o], [f], [t]], 0.5),  # up and down, over and over
+        "broken": (1.0, [[r], [f], [t + 12 if t + 12 <= high else t], [f]], 0.95),  # a left hand, in quarters
+        "comping": (None, [[t, f, o]], 0.35),  # strummed chords, off the beat
+    }
+    step, cells, length = steps[pattern]
+    end = chord.start_beats + chord.duration_beats
+    events = []
+    if pattern == "comping":
+        bar_start = (chord.start_beats // bpb) * bpb
+        while bar_start < end:
+            for offset in (0.0, 0.375 * bpb, 0.5 * bpb, 0.875 * bpb):
+                at = bar_start + offset
+                if chord.start_beats <= at < end:
+                    events.append((at, length, [p for p in cells[0] if low <= p <= high], 1.0 if offset == 0 else 0.8))
+            bar_start += bpb
+        return events
+    at = chord.start_beats
+    while at < end - 1e-9:
+        index = round((at % bpb) / step)
+        pitches = [p for p in cells[index % len(cells)] if low <= p <= high] or [r]
+        events.append((at, min(length, end - at), pitches, 1.0 if abs(at % bpb) < 1e-9 else 0.85))
+        at += step
+    return events
 
 
 def _extra_part(part: ExtraPart, name: str, chords: list[ChordSpan], melody: Melody) -> pretty_midi.Instrument:

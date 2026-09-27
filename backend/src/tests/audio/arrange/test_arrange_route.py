@@ -137,3 +137,40 @@ def test_the_page_route_refusals(app, client, tmp_path):
     assert r.status_code == 400 and r.get_json()["code"] == "silent"
     assert "error" in r.get_json()  # what the page shows
 
+
+def test_the_notes_graph_shows_what_intake_heard_and_what_the_song_plays(app, client, fake_render):
+    import json
+
+    shutil.copy(HUM_WAV, Path(app.config["UPLOAD_FOLDER"]) / "hum_1.wav")
+    settings = {**PAGE_SETTINGS, "style": "classical", "pitch": 0.75}
+    notes = client.post("/pipeline/notes", json={"hum": "hum_1.wav", "settings": settings})
+    assert notes.status_code == 200
+    body = notes.get_json()
+    assert set(body) == {"sung", "played", "contour"} and body["contour"]["segments"]
+    assert set(body["sung"][0]) == {"midi", "start", "duration"}
+
+    song = client.post("/pipeline/song", json={"hum": "hum_1.wav", "settings": settings})
+    run = Path(app.config["RUNS_DIR"]) / song.headers["X-Run-Id"]
+    heard = json.loads((run / "melody.json").read_text())["notes"]
+    arranged = json.loads((run / "melody_transformed.json").read_text())["notes"]
+    assert [n["midi"] for n in body["sung"]] == [n["pitch"] for n in heard]  # what intake heard
+    assert [n["midi"] for n in body["played"]] == [n["pitch"] for n in arranged]  # what the song plays
+    assert body["played"][0]["start"] == body["sung"][0]["start"] == body["contour"]["segments"][0]["start"]
+
+
+def test_upload_uses_intake_and_the_song_reuses_its_melody(app, client, fake_render, monkeypatch):
+    """/upload runs intake once; /pipeline/song and /pipeline/notes then only arrange."""
+    from app.audio import pipeline
+
+    calls = []
+    real = pipeline.INTAKES["intake"]
+    monkeypatch.setitem(pipeline.INTAKES, "intake", lambda path, run: calls.append(path) or real(path, run))
+    with open(HUM_WAV, "rb") as hum:
+        upload = client.post("/upload", data={"file": (hum, "recording.wav")}, content_type="multipart/form-data")
+    assert upload.status_code == 201, upload.get_json()
+    reply = upload.get_json()
+    assert reply["run_id"] and reply["melody"] and (reply["key"], reply["mode"]) == ("D", "minor")
+    assert client.post("/pipeline/song", json={"hum": reply["filename"], "settings": PAGE_SETTINGS}).status_code == 200
+    assert client.post("/pipeline/notes", json={"hum": reply["filename"], "settings": PAGE_SETTINGS}).status_code == 200
+    assert len(calls) == 1
+

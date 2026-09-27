@@ -26,23 +26,24 @@ def test_phrases_and_their_peaks(melody):
 
 
 @pytest.mark.parametrize("style", sorted(STYLES))
-def test_five_tracks_with_the_style_programs(melody, style):
+def test_every_track_with_the_style_programs(melody, style):
     tracks, midi, warnings = arrange(melody, style)
     preset = STYLES[style].orchestration
-    assert [i.name for i in midi.instruments] == list(O.TRACKS)
-    assert tracks["melody"].program == preset.lead
-    assert tracks["strings_pad"].program == preset.pad
-    assert tracks["bass"].program == preset.bass
-    assert tracks["brass"].program == preset.brass
-    assert tracks["percussion"].is_drum and not any(tracks[n].is_drum for n in O.TRACKS[:-1])
-    assert all(tracks[n].notes for n in O.TRACKS)
+    names = O.track_names(preset)
+    assert [i.name for i in midi.instruments] == names
+    assert ("timpani" in names) == preset.timpani
+    programs = {"melody": preset.lead, "melody_double": preset.double, "strings_pad": preset.pad,
+                "figure": preset.figure, "bass": preset.bass, "brass": preset.brass}
+    assert {name: tracks[name].program for name in programs} == programs
+    assert tracks["percussion"].is_drum and not any(tracks[n].is_drum for n in names[:-1])
+    assert all(tracks[n].notes for n in names)  # every instrument plays
     assert warnings == []
 
 
 @pytest.mark.parametrize("style", sorted(STYLES))
 def test_every_pitched_note_is_in_its_instruments_range(melody, style):
     tracks, _, _ = arrange(melody, style)
-    for name in O.TRACKS[:-1]:
+    for name in O.track_names(STYLES[style].orchestration)[:-1]:
         low, high = INSTRUMENT_RANGES[tracks[name].program]
         assert all(low <= n.pitch <= high for n in tracks[name].notes), name
 
@@ -60,8 +61,9 @@ def test_harmony_stays_in_key_for_every_styles_transformed_melody(melody, style)
     from app.audio.arrange.transforms import apply_operations
 
     tracks, _, _ = arrange(apply_operations(melody, STYLES[style].transforms), style)
-    for name in ("strings_pad", "bass", "brass"):
-        assert {n.pitch % 12 for n in tracks[name].notes} <= D_MINOR, name
+    for name in ("strings_pad", "figure", "bass", "brass", "timpani"):
+        if name in tracks:
+            assert {n.pitch % 12 for n in tracks[name].notes} <= D_MINOR, name
 
 
 def test_an_out_of_key_chord_is_replaced_by_the_best_fitting_one_in_key(melody):
@@ -112,8 +114,8 @@ def test_written_arrangement_reads_in_music21_and_pretty_midi(melody, tmp_path):
     _, midi, _ = arrange(melody)
     path = tmp_path / "arrangement.mid"
     midi.write(str(path))
-    validate_midi(path, min_tracks=5, music21=True)
-    assert len(converter.parse(str(path)).parts) == 5
+    validate_midi(path, min_tracks=len(O.TRACKS), music21=True)
+    assert len(converter.parse(str(path)).parts) == len(O.track_names(STYLES["cinematic"].orchestration))
 
 
 def test_harmony_falls_back_to_the_tonic_if_the_accompanist_fails(melody, monkeypatch):
@@ -163,3 +165,49 @@ def test_the_accompanist_engine_is_still_an_option(melody, monkeypatch):
     monkeypatch.setattr(config, "HARMONY", "accompanist")
     chords, warnings = O.harmonize(melody)
     assert warnings == [] and all(set(c.pitch_classes) <= D_MINOR for c in chords)
+
+
+@pytest.mark.parametrize("style", sorted(STYLES))
+def test_the_figure_keeps_moving(melody, style):
+    """The accompaniment isn't just held chords: several notes in every bar."""
+    tracks, _, _ = arrange(melody, style)
+    bar = melody.beats_per_bar * melody.seconds_per_beat
+    per_bar = [sum(1 for n in tracks["figure"].notes if b * bar <= n.start < (b + 1) * bar) for b in range(melody.bars)]
+    assert min(per_bar) >= 2, per_bar
+
+
+def test_the_doubling_joins_for_the_second_part(melody):
+    """It builds: the lead alone first, a second instrument on the tune from the second phrase."""
+    tracks, _, _ = arrange(melody)
+    second_phrase = 4 * melody.beats_per_bar * melody.seconds_per_beat
+    starts = [n.start for n in tracks["melody_double"].notes]
+    assert starts and min(starts) >= second_phrase - 1e-6
+    assert len(starts) == sum(1 for n in melody.notes if n.start_beats >= 16)
+
+
+def test_a_pad_lead_is_doubled_from_the_start(melody):
+    from app.audio.arrange import ArrangeSettings
+
+    midi, _ = O.orchestrate(melody, STYLES["cinematic"].orchestration, ArrangeSettings(lead=89))  # the page's synth pad
+    double = next(i for i in midi.instruments if i.name == "melody_double")
+    assert len(double.notes) == len(melody.notes) and double.notes[0].start == 0
+
+
+def test_timpani_roll_into_each_peak(melody):
+    tracks, _, _ = arrange(melody)
+    bar = melody.beats_per_bar * melody.seconds_per_beat
+    beat = melody.seconds_per_beat
+    for peak in (1, 4, 7):
+        roll = [n for n in tracks["timpani"].notes if peak * bar - beat - 1e-6 <= n.start < peak * bar - 1e-6]
+        assert len(roll) == 8 and [n.velocity for n in roll] == sorted(n.velocity for n in roll), peak
+
+
+@pytest.mark.parametrize("style", sorted(STYLES))
+def test_several_instruments_play_at_once_all_through(melody, style):
+    """Never a lone instrument: in every bar at least four tracks are sounding."""
+    tracks, midi, _ = arrange(melody, style)
+    bar = melody.beats_per_bar * melody.seconds_per_beat
+    for b in range(melody.bars):
+        playing = {i.name for i in midi.instruments for n in i.notes if n.start < (b + 1) * bar and n.end > b * bar}
+        assert len(playing) >= 4, (b, playing)
+

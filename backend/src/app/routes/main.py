@@ -14,12 +14,14 @@ from accompanist.audio.render import render_midi
 from accompanist.generate import generate_accompaniment
 from accompanist.music.styles import STYLES
 
-from ..audio.handoff import sensible_tempo, to_engine_melody
-from ..audio.intake import AudioInputError, unique_upload_name
-from ..audio.processor import analyze_audio_file, clean_wav
+from ..audio.arrange.melody import key_tonic_and_mode, load_melody
+from ..audio.errors import PipelineError
+from ..audio.intake import AudioInputError, inspect_wav, unique_upload_name
+from ..audio.pipeline import melody_run_for
 
 bp = Blueprint("main", __name__)
-NO_TUNE = "No tune was found in that recording. Hum a little louder, closer to the mic."
+# Intake's refusals the user can fix by recording again (app/audio/intake): answered 400.
+RECORDING_CODES = {"no_tune", "silent", "too_short", "too_long", "unreadable", "empty", "not_found", "input_changed"}
 
 # The "creepy" sound for /accompaniment/generate: FluidSynth's small demo soundfont, whose instruments
 # are all crude retro waves. Looked for next to the real soundfont first, then where Homebrew puts it.
@@ -80,22 +82,19 @@ def health():
 
 @bp.route("/upload", methods=["POST"])
 def upload_wav():
-    """Receive a hummed .wav from the frontend, save it, and find its notes.
+    """Receive a hummed .wav from the frontend, save it, and find its tune with the audio
+    pipeline's intake (app/audio/intake), whose melody /pipeline/song then arranges.
 
-    201 → the saved file's name (send it back to /talk/song and /talk/notes), plus:
-        melody          notes ready for POST /accompaniment/generate: hz (MIDI note), start and
+    201 → the saved file's name (send it back to /pipeline/song, /talk/song and /talk/notes), plus:
+        run_id          the pipeline run holding the hum's melody (melody.json)
+        melody          the tune for POST /accompaniment/generate: hz (MIDI note), start and
                         duration in beats at ``tempo`` (send ``tempo`` along with it)
         tempo, key, mode
-        melody_seconds  the same notes in seconds, on the recording's own time axis
         tuning_cents    how far off A440 the hum was (already corrected in the notes)
         warnings        problems with the recording, in words for the user
-        clean_filename  the filtered copy of the recording
-        audio_analysis  the full analysis (pitch track, segments, ...)
-        accompaniment   the accompanist's song for this hum: status, key, mode, progression,
-                        wav_filename, and url (GET it to play the WAV; /api/song/... from the
-                        browser). On failure: status "failed" + error; the upload still succeeds.
-    400 → the file isn't a usable recording: {error}; or no tune was found in it (silence, or a
-          hum too quiet to hear): {error, code: "no_tune"}. Nothing is kept either way.
+    400 → the file isn't a usable recording, or no tune was found in it: {error} in words for the
+          user, plus a code from intake when it refused it ("no_tune", "silent", "too_short"...).
+          Nothing is kept either way.
     500 → the analysis itself failed: {error, details}
     """
     request_start = time.time()
@@ -124,93 +123,48 @@ def upload_wav():
     file_size = os.path.getsize(filepath)
 
     proc_start = time.time()
-    target_sr = current_app.config.get("AUDIO_TARGET_SR", 22050)
     try:
-        hum = analyze_audio_file(filepath, target_sr=target_sr, keep_analysis=True)
-        if not hum["melody"]:  # nothing to make a song from; /talk/song would only refuse it later
-            _discard(filepath)
-            return jsonify({"error": NO_TUNE, "code": "no_tune"}), 400
-        clean_path = clean_wav(filepath, target_sr=target_sr)
+        inspect_wav(filepath)  # quick checks first: a readable WAV of a sensible length
+        run_dir, warnings = melody_run_for(filepath, current_app.config["RUNS_DIR"])
+        melody = load_melody(run_dir / "melody.json")
     except AudioInputError as exc:
         _discard(filepath)
         return jsonify({"error": str(exc)}), 400
+    except PipelineError as exc:
+        _discard(filepath)
+        if exc.code in RECORDING_CODES:
+            return jsonify({"error": exc.message, "code": exc.code}), 400
+        current_app.logger.error("intake failed at %s (%s): %s", exc.step, exc.code, exc.__cause__ or exc)
+        return jsonify({"error": "Audio processing failed", "details": exc.message}), 500
     except Exception as exc:  # noqa: BLE001 - a bug, not a bad file: say so plainly
         current_app.logger.exception("Audio processing failed")
         _discard(filepath)
         return jsonify({"error": "Audio processing failed", "details": str(exc)}), 500
 
-    tempo = sensible_tempo(hum["tempo"])
+    tonic, mode = key_tonic_and_mode(melody.key)
     current_app.logger.info(
-        "upload %s: %d notes, %.1f BPM, %s %s, %+d cents, warnings=%s",
-        filename, len(hum["melody"]), tempo, hum["key"], hum["mode"], hum["tuning_cents"], hum["warnings"],
+        "upload %s: %d notes, %.1f BPM, %s, %+g cents, run %s, warnings=%s",
+        filename, len(melody.notes), melody.tempo_bpm, melody.key, melody.tuning_offset_cents, run_dir.name, warnings,
     )
-    engine_melody = to_engine_melody(hum["melody"], tempo)
-    accompaniment = _compose(engine_melody, tempo, filename)
     response_data = {
         "status": "success",
         "message": "File uploaded and processed successfully",
         "filename": filename,
-        "clean_filename": os.path.basename(clean_path),
         "size_bytes": file_size,
         "size_mb": round(file_size / (1024 * 1024), 2),
         "saved_path": filepath,
-        "melody": engine_melody,
-        "accompaniment": accompaniment,
-        "tempo": tempo,
-        "key": hum["key"],
-        "mode": hum["mode"],
-        "melody_seconds": hum["melody"],
-        "tuning_cents": hum["tuning_cents"],
-        "warnings": hum["warnings"],
-        "audio_analysis": hum["analysis"],
+        "run_id": run_dir.name,
+        # the engine's "hz" holds MIDI note numbers, its times are beats
+        "melody": [{"hz": float(n.pitch), "start": n.start_beats, "duration": n.duration_beats} for n in melody.notes],
+        "tempo": melody.tempo_bpm,
+        "key": tonic,
+        "mode": mode,
+        "tuning_cents": melody.tuning_offset_cents,
+        "warnings": warnings,
         "processing_time_seconds": round(time.time() - proc_start, 3),
         "total_request_time_seconds": round(time.time() - request_start, 3),
     }
-    # Audio libraries return NumPy scalars (notably ``numpy.bool`` from pitch voicing), which
-    # Flask's JSON provider can't serialize.
     return jsonify(_json_safe(response_data)), 201
-
-
-def _compose(engine_melody, tempo, upload_name):
-    """Run the accompanist on the hum and save its MIDI + WAV in RECORDINGS_FOLDER.
-
-    Never fails the upload: if composing or rendering goes wrong, the error is reported in the
-    returned dict and the hum's analysis is still sent back.
-    """
-    if not engine_melody:
-        return {"status": "skipped", "error": "No notes were found in the hum."}
-    folder = current_app.config["RECORDINGS_FOLDER"]
-    os.makedirs(folder, exist_ok=True)
-    stem = os.path.splitext(upload_name)[0] + "_accompaniment"
-    midi_path = os.path.join(folder, stem + ".mid")
-    wav_path = os.path.join(folder, stem + ".wav")
-    started = time.time()
-    try:
-        result = generate_accompaniment(
-            {"melody": engine_melody, "tempo": tempo},
-            midi_path,
-            tempo=tempo,
-            render_wav=True,
-            wav_path=wav_path,
-        )
-    except Exception as exc:  # noqa: BLE001 - report it, keep the upload
-        current_app.logger.exception("Accompaniment generation failed")
-        return {"status": "failed", "error": str(exc)}
-
-    info = {
-        "status": "success" if result.wav_path else "midi_only",
-        "key": result.key,
-        "mode": result.mode,
-        "progression": result.progression_symbols,
-        "midi_filename": os.path.basename(result.midi_path),
-        "wav_filename": os.path.basename(result.wav_path) if result.wav_path else None,
-        # the browser calls /api/song/<name>; Vite forwards it here as /song/<name>
-        "url": f"/song/{os.path.basename(result.wav_path)}" if result.wav_path else None,
-        "warnings": result.warnings,
-        "time_seconds": round(time.time() - started, 3),
-    }
-    current_app.logger.info("accompaniment for %s: %s %s, %s", upload_name, info["key"], info["mode"], info["progression"])
-    return info
 
 
 @bp.route("/song/<path:name>", methods=["GET"])

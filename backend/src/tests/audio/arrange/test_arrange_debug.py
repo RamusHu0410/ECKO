@@ -28,6 +28,9 @@ def test_chord_names():
 def test_stems_render_each_track_alone(tmp_path, fake_render, soundfont):
     result = pipeline.run_pipeline(str(tmp_path / "hum.wav"), "piano", run_dir=str(tmp_path / "run"), intake="fixture")
     stems = debug.render_stems(result.run_dir, soundfont)
-    assert sorted(p.name for p in stems) == [f"stem_{t}.wav" for t in sorted(["melody", "strings_pad", "bass", "brass", "percussion"])]
+    from app.audio.arrange.config import STYLES
+    from app.audio.arrange.orchestrate import track_names
+
+    assert sorted(p.name for p in stems) == sorted(f"stem_{t}.wav" for t in track_names(STYLES["piano"].orchestration))
     assert all(sf.info(str(p)).frames > 0 for p in stems)
     assert debug.render_stems(result.run_dir, soundfont) == stems  # a second call leaves them as they are

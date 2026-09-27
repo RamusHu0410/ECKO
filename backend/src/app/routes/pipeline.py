@@ -8,6 +8,10 @@ POST /pipeline/song         what the page calls: the same body as /talk/song, {h
                             usable tune, 404 the hum is gone, 503 the song couldn't be made). The
                             hum's melody is transcribed once and reused, so a settings change only
                             re-arranges it.
+POST /pipeline/notes        the same body as /talk/notes, and its answer: for the notes graph, the
+                            notes intake heard (sung), the ones the song's tune plays (played),
+                            and the hum's pitch as it was sung (contour), in seconds on the hum's
+                            time axis
 POST /pipeline              make a song from a hum, in one request (about 1-5 s):
                             JSON {hum: <filename /upload returned>, style?}   the hum /upload saved
                             or multipart {file, style?}                      a recording sent directly
@@ -25,12 +29,14 @@ The browser calls /api/pipeline...; Vite (and Vercel) forward it here without th
 import os
 import re
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
-from ..audio.arrange import ArrangeSettings, ExtraPart
+from ..audio.arrange import ArrangeSettings, ExtraPart, arranged_melody
+from ..audio.arrange.melody import load_melody
 from ..audio.arrange.config import DEFAULT_STYLE, STYLE_ALIASES, STYLES
 from ..audio.errors import PipelineError
 from ..audio.pipeline import melody_run_for, new_run_dir, rerun, run_pipeline
@@ -71,6 +77,45 @@ def song_for_page():
                             f", warnings {result.warnings}" if result.warnings else "")
     return Response(Path(result.final_wav_path).read_bytes(), mimetype="audio/wav",
                     headers={"Cache-Control": "no-store", "X-Run-Id": result.run_id})
+
+
+@bp.post("/notes")
+def notes_for_page():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("hum"), str):
+        return jsonify({"error": "Send JSON with the hum's filename from /upload.", "code": "bad_request"}), 400
+    hum_path = os.path.join(current_app.config["UPLOAD_FOLDER"], secure_filename(data["hum"]))
+    if not os.path.isfile(hum_path):
+        return jsonify({"error": HUM_GONE, "code": "hum_gone"}), 404
+    try:
+        style, settings = settings_from_page(data.get("settings"))
+        melody_run, _ = melody_run_for(hum_path, current_app.config["RUNS_DIR"])
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "code": "bad_settings"}), 400
+    except PipelineError as exc:
+        return _failure(exc)
+    heard = load_melody(melody_run / "melody.json")
+    played, _, _ = arranged_melody(heard, style, settings)
+    contour = _contour(hum_path, os.stat(hum_path).st_mtime_ns)
+    # intake trimmed the silence before the hum, and its first note is beat 0: put both tunes where
+    # the singing starts
+    first = contour["segments"][0]["start"] if contour.get("segments") else 0.0
+    return jsonify({"sung": _seconds(heard, first), "played": _seconds(played, first), "contour": contour})
+
+
+def _seconds(melody, first: float) -> list[dict]:
+    spb = melody.seconds_per_beat
+    return [{"midi": n.pitch, "start": round(first + n.start_beats * spb, 3), "duration": round(n.duration_beats * spb, 3)}
+            for n in melody.notes]
+
+
+@lru_cache(maxsize=32)
+def _contour(hum_path: str, _changed_at: int) -> dict:
+    """The hum's pitch frame by frame, for drawing (the pitch tracker in app/audio/processor.py).
+    Settings changes redraw the graph, so it's kept per recording."""
+    from ..audio.processor import analyze_audio_file
+
+    return analyze_audio_file(hum_path).get("contour") or {"step": 0.0, "segments": []}
 
 
 def settings_from_page(page: dict | None) -> tuple[str, ArrangeSettings]:

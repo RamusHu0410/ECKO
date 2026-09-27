@@ -143,6 +143,24 @@ def _transform(run: Path, preset, _soundfont, settings: ArrangeSettings) -> Step
         logger.error("transform: melody.json is unusable: %s", exc)
         raise _error("transform", "The melody from your recording couldn't be read.", "bad_melody") from exc
 
+    transformed, warnings, fell_back = _arranged(melody, preset, settings)
+
+    try:
+        json_path = save_melody_json(transformed, run / FILES["transform"])
+        midi_path = save_melody_midi(transformed, run / FILES["melody_midi"])
+    except (OSError, ValueError) as exc:
+        logger.error("transform: couldn't write the transformed melody: %s", exc)
+        raise _error("transform", "The song couldn't be saved.", "write_failed") from exc
+    return StepReport("transform", {"melody": str(json_path), "midi": str(midi_path)}, warnings, fell_back)
+
+
+def arranged_melody(melody, style: str, settings: ArrangeSettings = DEFAULT):
+    """The tune as the arrangement will play it (the listener's settings, then the style's
+    variations), without writing or rendering anything: (melody, warnings, fell_back)."""
+    return _arranged(melody, get_style(resolve_style(style)[0]), settings)
+
+
+def _arranged(melody, preset, settings: ArrangeSettings):
     warnings, fell_back = [], False
     try:
         melody = apply_settings(melody, settings)  # the listener's tempo, key and mode first
@@ -157,14 +175,7 @@ def _transform(run: Path, preset, _soundfont, settings: ArrangeSettings) -> Step
     except Exception as exc:  # noqa: BLE001 - any failure: carry on with the melody as sung
         transformed, fell_back = melody, True
         warnings.append(f"The transformations failed ({exc}); arranging the untransformed melody.")
-
-    try:
-        json_path = save_melody_json(transformed, run / FILES["transform"])
-        midi_path = save_melody_midi(transformed, run / FILES["melody_midi"])
-    except (OSError, ValueError) as exc:
-        logger.error("transform: couldn't write the transformed melody: %s", exc)
-        raise _error("transform", "The song couldn't be saved.", "write_failed") from exc
-    return StepReport("transform", {"melody": str(json_path), "midi": str(midi_path)}, warnings, fell_back)
+    return transformed, warnings, fell_back
 
 
 def _orchestrate(run: Path, preset, _soundfont, settings: ArrangeSettings) -> StepReport:

@@ -7,7 +7,7 @@ See steps.py for the files each step writes, and config.py for the styles.
 from .config import STYLES
 from .settings import ArrangeSettings, ExtraPart
 from app.audio.errors import PipelineError  # shared with intake
-from .steps import FILES, STEPS, RenderResult, StepReport, arrange_and_render, run_steps
+from .steps import FILES, STEPS, RenderResult, StepReport, arrange_and_render, arranged_melody, run_steps
 
 __all__ = [
     "FILES",
@@ -19,5 +19,6 @@ __all__ = [
     "RenderResult",
     "StepReport",
     "arrange_and_render",
+    "arranged_melody",
     "run_steps",
 ]

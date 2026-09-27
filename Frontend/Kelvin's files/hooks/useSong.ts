@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { PIPELINE_SONG_URL, fetchNotes, makeSong, type SongNotes } from '../api/talk'
+import { PIPELINE_NOTES_URL, PIPELINE_SONG_URL, TALK_NOTES_URL, fetchNotes, makeSong, type SongNotes } from '../api/talk'
 import { UploadError, type HumUpload } from '../api/uploadHum'
 import { ENGINE_ORDER, engineSettings, generateSong } from '../api/generateAccompaniment'
 import type { SongSettings } from './useSongSettings'
@@ -27,7 +27,7 @@ export function useSong(settings: SongSettings, advanced: boolean) {
 
   /** Fetches the notes graph for a version once it plays; the song never waits for it. */
   const showNotes = useCallback((hum: string, used: SongSettings) => {
-    fetchNotes(hum, used).then(
+    fetchNotes(hum, used, latest.current.advanced ? TALK_NOTES_URL : PIPELINE_NOTES_URL).then(
       (found) => {
         if (humRef.current?.filename === hum) setNotes(found)
       },

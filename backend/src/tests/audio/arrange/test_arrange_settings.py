@@ -55,7 +55,7 @@ def test_extra_parts_play_only_in_their_section(melody):
                                       ExtraPart(52, "chords", 70, "all")))
     midi, _ = O.orchestrate(melody, STYLES["piano"].orchestration, settings)
     tracks = {i.name: i for i in midi.instruments}
-    assert list(tracks)[:5] == list(O.TRACKS)
+    assert list(tracks)[:len(O.TRACKS)] == O.track_names(STYLES["piano"].orchestration)
     half = melody.bars * melody.beats_per_bar / 2 * melody.seconds_per_beat
     cello, drums, choir = tracks["extra_1_bass"], tracks["extra_2_drums"], tracks["extra_3_chords"]
     assert cello.program == 42 and all(n.start >= half - 1e-6 for n in cello.notes) and cello.notes
