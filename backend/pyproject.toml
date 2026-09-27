@@ -26,6 +26,9 @@ dependencies = [
     "flask-cors>=6.0.5",
     "elevenlabs>=2.69.0",
     "google-genai>=2.25.0",
+    "arvo>=0.3.0",
+    "pedalboard>=0.9.25",
+    "pyfluidsynth>=1.4.0",
 ]
 
 [tool.pytest.ini_options]
