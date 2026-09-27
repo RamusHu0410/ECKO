@@ -199,7 +199,7 @@ def arrange(midi_path: str, chords: list, settings: SongSettings, tempo: float) 
     song = pretty_midi.PrettyMIDI(midi_path)
     lead = _lead(settings)
     for track in song.instruments:
-        _set_volume(track, LEAD_VOLUME[lead.level])  # normal = FluidSynth's default, so unchanged
+        _scale_volume(track, LEAD_VOLUME[lead.level] / LEAD_VOLUME["normal"])  # normal = unchanged
     half = song.get_end_time() / 2
     seconds_per_beat = 60 / tempo
     for part in settings.instruments:
@@ -282,6 +282,14 @@ def _plays(section: str, at: float, half: float) -> bool:
 
 def _set_volume(track: pretty_midi.Instrument, volume: int) -> None:
     track.control_changes.append(pretty_midi.ControlChange(number=7, value=volume, time=0.0))  # 7 = channel volume
+
+
+def _scale_volume(track: pretty_midi.Instrument, factor: float) -> None:
+    """Scale the channel volume the engine set (keeps its melody/accompaniment balance)."""
+    current = [change for change in track.control_changes if change.number == 7]
+    base = current[0].value if current else 100
+    track.control_changes = [change for change in track.control_changes if change.number != 7]
+    _set_volume(track, max(0, min(127, round(base * factor))))
 
 
 def _note(midi: float, start: float, duration: float) -> dict:

@@ -9,6 +9,7 @@
 import { TIMEOUT_MS, toHttpFailure, toNetworkFailure } from './uploadHum'
 import type { SongSettings } from '../hooks/useSongSettings'
 import type { GnomeId } from '../data/gnomes'
+import { apiUrl } from './base'
 
 /** What the backend understood from one spoken command, and the settings after it. */
 export interface TalkTurn {
@@ -62,7 +63,7 @@ export async function sendTalk(recording: Blob, settings: SongSettings, previous
   const form = new FormData()
   form.append('audio', recording, recordingName(recording.type))
   form.append('state', JSON.stringify({ settings, previous, character }))
-  const response = await fetch('/api/talk/voice', { method: 'POST', body: form, signal: AbortSignal.timeout(TALK_TIMEOUT_MS) })
+  const response = await fetch(apiUrl('/api/talk/voice'), { method: 'POST', body: form, signal: AbortSignal.timeout(TALK_TIMEOUT_MS) })
   const reply = (await response.json().catch(() => null)) as (TalkTurn & { error?: string }) | null
   if (!response.ok || !reply) throw new Error(reply?.error ?? `The backend answered ${response.status}`)
   return reply
@@ -70,7 +71,7 @@ export async function sendTalk(recording: Blob, settings: SongSettings, previous
 
 /** Where the spoken reply streams from; an audio element can play it as it arrives. */
 export function speechUrl(speechId: string) {
-  return `/api/talk/speech/${encodeURIComponent(speechId)}`
+  return apiUrl(`/api/talk/speech/${encodeURIComponent(speechId)}`)
 }
 
 /** The route that makes the song from the hum and the settings: the audio pipeline's orchestral
@@ -87,7 +88,7 @@ export async function makeSong(hum: string, settings: SongSettings, signal?: Abo
   let body: string
   try {
     const timeout = AbortSignal.timeout(TIMEOUT_MS)
-    response = await fetch(url, {
+    response = await fetch(apiUrl(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hum, settings }),
@@ -102,7 +103,7 @@ export async function makeSong(hum: string, settings: SongSettings, signal?: Abo
 }
 
 export async function fetchNotes(hum: string, settings: SongSettings, url = TALK_NOTES_URL): Promise<SongNotes> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hum, settings }),

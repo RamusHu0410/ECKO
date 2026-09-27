@@ -11,8 +11,9 @@
  */
 import { encodeWav } from '../audio/encodeWav'
 import type { MelodyNote } from './generateAccompaniment'
+import { apiUrl } from './base'
 
-const UPLOAD_URL = '/api/upload'
+const UPLOAD_URL = apiUrl('/api/upload')
 /** Backend work can be slow; give up after this long. */
 export const TIMEOUT_MS = 90_000
 

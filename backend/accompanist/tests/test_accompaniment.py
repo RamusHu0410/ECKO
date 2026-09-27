@@ -192,10 +192,14 @@ class TestPitchesBelowMelodyHelper:
         assert _pitches_below_melody([48, 52, 55], None) == [48, 52, 55]
 
     def test_shifts_down_an_octave_when_clashing(self):
-        # 55 (G3) clashes with a melody note at 55; must drop below it.
-        result = _pitches_below_melody([48, 52, 55], melody_min_pitch=55)
-        assert max(result) < 55
-        assert result == [36, 40, 43]
+        # 67 (G4) clashes with a melody note at 67; must drop below it.
+        result = _pitches_below_melody([60, 64, 67], melody_min_pitch=67)
+        assert max(result) < 67
+        assert result == [48, 52, 55]
+
+    def test_default_floor_keeps_chords_out_of_the_mud(self):
+        # Dropping [48, 52, 55] would land at C2-G2, below the A2 floor, so it stays put.
+        assert _pitches_below_melody([48, 52, 55], melody_min_pitch=55) == [48, 52, 55]
 
     def test_already_below_melody_is_untouched(self):
         assert _pitches_below_melody([36, 40, 43], melody_min_pitch=55) == [36, 40, 43]
