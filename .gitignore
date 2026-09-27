@@ -12,3 +12,6 @@ __pycache__/
 # The tests' own fixture clips are the exception.
 *.wav
 !**/tests/fixtures/*.wav
+
+# Users' saved recordings (backend/src/app/storage.py): user data, never tracked.
+backend/storage/

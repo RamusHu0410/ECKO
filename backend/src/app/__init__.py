@@ -16,10 +16,17 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
 
     # Ensure upload + recordings folders exist
-    for key in ('UPLOAD_FOLDER', 'RECORDINGS_FOLDER'):
+    for key in ('UPLOAD_FOLDER', 'RECORDINGS_FOLDER', 'STORAGE_DIR'):
         folder = app.config.get(key)
         if folder:
             os.makedirs(folder, exist_ok=True)
+
+    # The app keeps its data in TigerData; without a database URL it can't do anything useful.
+    if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+        raise RuntimeError(
+            'DATABASE_URL is not set. Put your TigerData (Tiger Cloud) connection string in '
+            'backend/.env; see backend/.env.example and backend/docs/DATABASE.md.'
+        )
 
     # Initialize extensions
     db.init_app(app)
@@ -33,15 +40,13 @@ def create_app(config_name=None):
     app.register_blueprint(main_bp)  # includes /accompaniment/styles and /accompaniment/generate
     app.register_blueprint(talk_bp, url_prefix='/talk')
 
-    # API blueprints (Auth0-protected app data)
-    from .routes.auth import bp as auth_bp
-    from .routes.recordings import bp as recordings_bp
+    # App data (Auth0-protected, stored in TigerData): account + recordings, posts, profiles
+    from .routes.account import bp as account_bp
     from .routes.posts import bp as posts_bp
     from .routes.users import bp as users_bp
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(recordings_bp)
-    app.register_blueprint(posts_bp)
-    app.register_blueprint(users_bp)
+    app.register_blueprint(account_bp)
+    app.register_blueprint(posts_bp)  # discussion hub: posts, comments, likes
+    app.register_blueprint(users_bp)  # public profiles
 
     return app
 

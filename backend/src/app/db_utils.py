@@ -1,6 +1,6 @@
 """Database connectivity helpers.
 
-Run a quick connection check against TigerData:
+Run a quick connection check against TigerData (the DATABASE_URL in backend/.env):
 
     cd backend/src
     uv run python -m app.db_utils
@@ -23,6 +23,16 @@ def test_connection(app=None):
         return result == 1
 
 
+def timescaledb_version(app):
+    """The TimescaleDB extension's version, which every TigerData service has; None elsewhere."""
+    with app.app_context():
+        if db.engine.dialect.name != "postgresql":
+            return None
+        return db.session.execute(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'")
+        ).scalar()
+
+
 def main():
     from app import create_app
 
@@ -36,6 +46,7 @@ def main():
         if test_connection(app):
             print("Database connection successful")
             print(f"Connected to: {safe}")
+            print(f"TigerData (TimescaleDB): {timescaledb_version(app) or 'not found, this is not a TigerData service'}")
         else:
             print("Database connection failed: unexpected result")
     except Exception as exc:  # noqa: BLE001

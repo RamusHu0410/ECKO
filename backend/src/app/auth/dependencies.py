@@ -75,9 +75,10 @@ def require_auth(*required_scopes):
                         status_code=403,
                     )
                 g.auth_claims = claims
+                # get_current_user() inside the view can refuse the token too (no `sub`).
+                return fn(*args, **kwargs)
             except AuthError as exc:
                 return jsonify(exc.error), exc.status_code
-            return fn(*args, **kwargs)
 
         return wrapper
 
@@ -86,10 +87,17 @@ def require_auth(*required_scopes):
 
 def get_current_user():
     """Return the application User for the current request, creating it on
-    first sight (Phase 5: Auth0 user -> application user).
+    first sight (Auth0 user -> application user).
+
+    Safe when two first requests arrive at once. `auth0_id` and `username` are
+    unique, so a clashing insert fails instead of making a duplicate: if the
+    same person's other request won, use its row; if someone else took the
+    username first, derive another and try again.
 
     Must be called from within a @require_auth()-protected view.
     """
+    from sqlalchemy.exc import IntegrityError
+
     from app.extensions import db
     from app.models import User
 
@@ -102,19 +110,41 @@ def get_current_user():
         return g.current_user
 
     auth0_id = claims.get("sub")
-    user = db.session.query(User).filter_by(auth0_id=auth0_id).one_or_none()
-    if user is None:
-        user = User(
-            auth0_id=auth0_id,
-            username=_derive_username(claims),
-            display_name=_derive_display_name(claims),
-            avatar_url=claims.get("picture"),
-        )
-        db.session.add(user)
-        db.session.commit()
+    if not auth0_id:
+        raise AuthError({"code": "invalid_claims", "description": "The token has no subject (sub)."})
+
+    user = _user_by_auth0_id(auth0_id)
+    for attempt in range(_CREATE_ATTEMPTS):
+        if user is not None:
+            break
+        try:
+            user = User(
+                auth0_id=auth0_id,
+                username=_derive_username(claims),
+                display_name=_derive_display_name(claims),
+                avatar_url=claims.get("picture"),
+            )
+            db.session.add(user)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            user = _user_by_auth0_id(auth0_id)  # None: it was the username that clashed
+            if user is None and attempt == _CREATE_ATTEMPTS - 1:
+                raise
 
     g.current_user = user
     return user
+
+
+# Each retry sees the usernames taken so far, so more than a couple means something else is wrong.
+_CREATE_ATTEMPTS = 3
+
+
+def _user_by_auth0_id(auth0_id):
+    from app.extensions import db
+    from app.models import User
+
+    return db.session.execute(db.select(User).filter_by(auth0_id=auth0_id)).scalar_one_or_none()
 
 
 def _derive_username(claims):
@@ -132,7 +162,7 @@ def _derive_username(claims):
         or (claims.get("email") or "").split("@")[0]
         or claims.get("sub", "user").replace("|", "_")
     )
-    base = "".join(ch for ch in base.lower() if ch.isalnum() or ch in ("_", "-")) or "user"
+    base = "".join(ch for ch in base.lower() if ch.isalnum() or ch in ("_", "-"))[:70] or "user"
     candidate = base
     suffix = 1
     while db.session.query(User).filter_by(username=candidate).first() is not None:

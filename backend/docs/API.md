@@ -1,96 +1,101 @@
 # API Reference
 
-All `/api/*` endpoints require an Auth0 bearer token:
+All `/api/*` endpoints require an Auth0 access token for the API
+(`audience` = `AUTH0_API_AUDIENCE`). No scopes are needed:
 
 ```
 Authorization: Bearer <access_token>
 ```
 
-Errors are JSON: `{ "error"/"code": ..., "description"/"details": ... }`.
-`401` = missing/invalid token, `403` = insufficient scope or not the owner,
-`404` = not found, `400` = bad input.
+Errors are JSON. `401` = missing/invalid token (`{ "code", "description" }`),
+`403` = not the author (deleting a post or comment), `404` = not found,
+`400` = bad input, `413` = file too large (`{ "error" }`). Every id is a UUID string.
 
-## Auth
+The code is in `src/app/routes/account.py`, `posts.py` and `users.py`; files are stored by
+`src/app/storage.py`.
 
-### `GET /api/me`  — scope: any valid token
-Returns the current user, auto-creating the app user on first call.
+## `GET /api/me`
+The current user. The first call for an Auth0 identity creates the user.
 ```json
-{ "auth0_id": "auth0|abc123", "id": 1, "username": "ramus",
-  "display_name": "Ramus", "avatar_url": null, "joined_at": "..." }
+{ "id": "3f0c…-uuid", "auth0_id": "auth0|abc123", "created_at": "2026-09-26T21:30:00+00:00",
+  "username": "ramus", "display_name": "Ramus", "avatar_url": null }
 ```
 
-## Recordings
+## `POST /api/recordings`
+Saves a finished song (the final generated audio, **never the raw hum**).
+`multipart/form-data`:
 
-### `POST /api/recordings`  — scope: `write:recordings`
-Generates an accompaniment (via the `accompanist` engine) and saves it.
+| field   | required | notes |
+|---------|----------|-------|
+| `file`  | yes      | `.wav`, `.mp3`, `.ogg`, `.webm`, `.m4a` or `.flac`, non-empty, at most 50 MB |
+| `title` | no       | at most 200 characters |
+| `style` | no       | at most 32 characters |
+
+Returns `201` with the recording:
 ```json
-{ "title": "My first melody",
-  "melody": [ {"hz": 60, "start": 0, "duration": 1} ],
-  "key": "C", "mode": "major", "tempo": 100, "style": "piano",
-  "is_public": true }
+{ "id": "9a1e…-uuid", "title": "First song", "style": "jazz",
+  "duration_seconds": 12.5, "created_at": "…",
+  "file_url": "/api/recordings/9a1e…-uuid/file" }
 ```
-Returns `201` with the recording detail (incl. `audio_url`, `midi_url`).
+`duration_seconds` is `null` for formats the server can't read the length of (webm, m4a).
 
-### `GET /api/recordings/me`  — scope: `read:recordings`
-List of the caller's recordings, newest first.
+## `GET /api/recordings`
+The caller's recordings, newest first: a JSON array of the objects above.
 
-### `GET /api/recordings/{id}`  — scope: `read:recordings`
-One recording. Private recordings are only visible to their owner (returns
-`404` otherwise, so existence isn't leaked).
-
-### `GET /api/recordings/{id}/audio` · `/midi`  — scope: `read:recordings`
-Streams the generated WAV / MIDI file.
-
-### `DELETE /api/recordings/{id}`  — scope: `delete:recordings`
-Owner only. Also removes the generated files.
+## `GET /api/recordings/{id}/file`
+Streams the audio file, with its audio `Content-Type`. Someone else's recording
+answers `404`, the same as one that doesn't exist. An `<audio src>` can't send
+the Bearer header, so fetch it and play it through `URL.createObjectURL(blob)`.
 
 ## Posts (discussion hub)
 
-### `POST /api/posts`  — scope: `write:posts`
+### `POST /api/posts`
 ```json
-{ "title": "My first cinematic melody",
-  "content": "I was trying to make this sound emotional.",
-  "recording_id": 42 }
+{ "title": "Cinematic", "content": "emotional", "recording_id": "9a1e…-uuid" }
 ```
-`recording_id` is optional; if given, it **must belong to the caller**
-(otherwise `403`). Returns `201`.
+`title` is required. `recording_id` is optional and must be one of YOUR recordings
+(`404` otherwise). Attaching a recording shares it: anyone signed in can play it
+through the post's `recording.audio_url`. Returns `201` with the post.
 
-### `GET /api/posts`  — scope: `read:posts`
-Feed, newest first. Query params: `page` (default 1), `per_page`
-(default 20, max 50), `search` (matches title/content).
+### `GET /api/posts?page=1&per_page=20&search=`
+The feed, newest first. `search` matches the title and content.
 ```json
-{ "posts": [ { "id": 1, "title": "...", "author": {"username": "ramus"},
-               "recording": {"id": 42, "audio_url": "..."},
-               "like_count": 0, "comment_count": 0, "created_at": "..." } ],
+{ "posts": [ { "id": "…", "title": "...", "content": "...",
+               "author": { "username": "ramus", "display_name": "Ramus", "avatar_url": null, "joined_at": "…" },
+               "recording": { "id": "…", "title": "...", "style": "piano", "duration_seconds": 12.5,
+                              "audio_url": "/api/posts/…/audio" },
+               "like_count": 3, "comment_count": 1, "created_at": "…", "updated_at": "…" } ],
   "page": 1, "per_page": 20, "total": 1, "pages": 1 }
 ```
 
-### `GET /api/posts/{id}`  — scope: `read:posts`
-One post with author, recording, and its comments.
+### `GET /api/posts/{id}`
+One post, with its `comments` (oldest first).
 
-### `DELETE /api/posts/{id}`  — scope: `delete:posts` (owner only)
+### `GET /api/posts/{id}/audio`
+Streams the recording the post showcases (`404` if it has none).
+
+### `DELETE /api/posts/{id}`
+Author only (`403` otherwise).
 
 ## Comments
 
-### `GET  /api/posts/{id}/comments`  — scope: `read:posts`
-### `POST /api/posts/{id}/comments`  — scope: `write:comments`
+### `GET  /api/posts/{id}/comments`
+### `POST /api/posts/{id}/comments`
 ```json
-{ "content": "I really like the transition at the end." }
+{ "content": "great transition" }
 ```
-### `DELETE /api/posts/{id}/comments/{comment_id}`  — scope: `delete:comments` (owner only)
+### `DELETE /api/posts/{id}/comments/{comment_id}`
+Author only (`403` otherwise).
 
 ## Likes
 
-### `POST   /api/posts/{id}/like`  — scope: `write:posts`
-Idempotent; `UNIQUE(post_id, user_id)` means a user can't like twice.
-### `DELETE /api/posts/{id}/like`  — scope: `write:posts`
-Both return `{ "status": ..., "post_id": id, "like_count": n }`.
+### `POST   /api/posts/{id}/like`
+Idempotent: liking twice still counts once.
+### `DELETE /api/posts/{id}/like`
+Both return `{ "status", "post_id", "like_count" }`.
 
-## User profiles
+## Profiles
 
-### `GET /api/users/{username}`  — scope: `read:profile`
-```json
-{ "username": "ramus", "display_name": "Ramus", "avatar_url": "...",
-  "joined_at": "...", "recording_count": 12, "post_count": 7 }
-```
-Email is intentionally not exposed.
+### `GET /api/users/{username}`
+A public profile: `username`, `display_name`, `avatar_url`, `joined_at`,
+`recording_count`, `post_count`. Never the email or Auth0 id.

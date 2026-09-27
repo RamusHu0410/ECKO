@@ -14,13 +14,9 @@ Auth0  ->  Access Token (JWT)  ->  Flask backend validates  ->  app user
 2. **API** — create an API, e.g. identifier `https://api.melodyrecorder.com`.
    The frontend must request this as the `audience` so Auth0 returns a JWT
    access token intended for this backend.
-3. **Permissions (scopes)** on that API:
-   ```
-   read:profile   write:profile
-   read:recordings write:recordings delete:recordings
-   read:posts     write:posts     delete:posts
-   write:comments delete:comments
-   ```
+3. **Permissions (scopes)**: none are needed today. `/api/me` and the
+   recordings endpoints accept any valid token for the API. `require_auth()`
+   can still demand one, e.g. `require_auth("write:recordings")`.
 
 ## Backend configuration
 
@@ -63,9 +59,9 @@ def me():
     user = get_current_user()  # auto-created on first login
     return {"auth0_id": user.auth0_id}
 
-@bp.route("/api/recordings", methods=["POST"])
-@require_auth("write:recordings")   # requires the scope
-def create_recording():
+@bp.route("/api/admin/stats")
+@require_auth("read:stats")   # also requires a scope (403 without it)
+def stats():
     ...
 ```
 
@@ -77,4 +73,4 @@ Authorization: Bearer <access_token>
 ```
 
 - No token  -> `401 Unauthorized`
-- Valid token -> `{ "auth0_id": "auth0|abc123...", ... }`
+- Valid token -> `{ "id": "<uuid>", "auth0_id": "auth0|abc123...", "created_at": "..." }`

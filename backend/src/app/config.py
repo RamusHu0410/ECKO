@@ -40,6 +40,10 @@ class Config:
     RECORDINGS_FOLDER = os.environ.get('RECORDINGS_FOLDER') or \
         os.path.join(basedir, '..', '..', 'recordings')
 
+    # Where users' saved recordings (the final output audio) are stored, outside the database.
+    # Files go to <STORAGE_DIR>/recordings/<user_id>/<recording_id>.<ext>; see app/storage.py.
+    STORAGE_DIR = os.environ.get('STORAGE_DIR') or os.path.join(basedir, '..', '..', 'storage')
+
     # --- Auth0 (identity provider) -------------------------------------
     # Auth0 owns identity. The backend only validates access tokens Auth0
     # issues and links requests to app data via the "sub" claim.
@@ -50,8 +54,8 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = _normalize_db_url(os.environ.get('DATABASE_URL')) or \
-        'sqlite:///' + os.path.join(basedir, '..', '..', 'dev.db')
+    # The TigerData (Tiger Cloud) service. No SQLite fallback: create_app refuses to start without it.
+    SQLALCHEMY_DATABASE_URI = _normalize_db_url(os.environ.get('DATABASE_URL'))
 
 
 class ProductionConfig(Config):

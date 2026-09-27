@@ -21,10 +21,30 @@ export async function callApi(path: string, { token, method = 'GET', body }: { t
   } catch (error) {
     return { status: 0, body: { error: `No answer from the backend: ${String(error)}` } }
   }
+  return { status: response.status, body: await readBody(response) }
+}
+
+/**
+ * Downloads a protected file (an `<audio src>` can't send the token) and returns an object URL for
+ * it, which the caller must revoke. On failure there's no URL and the body says why.
+ */
+export async function fetchFileUrl(path: string, token: string): Promise<ApiResult & { url?: string }> {
+  let response: Response
+  try {
+    response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } })
+  } catch (error) {
+    return { status: 0, body: { error: `No answer from the backend: ${String(error)}` } }
+  }
+  if (!response.ok) return { status: response.status, body: await readBody(response) }
+  const blob = await response.blob()
+  return { status: response.status, body: { type: blob.type, bytes: blob.size }, url: URL.createObjectURL(blob) }
+}
+
+async function readBody(response: Response): Promise<unknown> {
   const text = await response.text()
   try {
-    return { status: response.status, body: JSON.parse(text) }
+    return JSON.parse(text)
   } catch {
-    return { status: response.status, body: text.slice(0, 500) }
+    return text.slice(0, 500)
   }
 }
