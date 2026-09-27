@@ -1,15 +1,16 @@
 import { useEffect } from 'react'
 import { useThree } from '@react-three/fiber'
-import { BackSide, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, PMREMGenerator, Scene, SphereGeometry, type Side, type Texture } from 'three'
+import { BackSide, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, PMREMGenerator, Scene, SphereGeometry, type Side } from 'three'
 
 /**
- * A bright white photo studio. What the metal and the vinyl reflect is a small scene built in code
- * (nothing is downloaded): a dim warm room, a large softbox up at the top-left, a thin strip light
- * to the right and a white floor, so reflections have highlights and falloff like a product shot.
- * One soft key light, from the top-left of the view (behind and left of the turntable), casts the
- * shadows: they fall forward to the bottom-right, onto an invisible floor over the white page.
+ * The scene's light. One soft key light, from the top-left of the view (behind and left of the
+ * turntable), casts the shadows: they fall forward to the bottom-right, onto an invisible floor over
+ * the white page. A warm sky/ground fill and a small studio built in code (a dim warm room, a large
+ * softbox up at the top-left, a thin strip light to the right and a white floor) light the gnome's
+ * glaze; the turntable's own materials reflect the bundled studio HDRI instead (materials.ts), so
+ * changing that never changes how the gnome looks.
  */
-export default function StudioLights({ onEnvironment }: { onEnvironment: (texture: Texture) => void }) {
+export default function StudioLights() {
   const { gl, scene } = useThree()
 
   useEffect(() => {
@@ -18,7 +19,6 @@ export default function StudioLights({ onEnvironment }: { onEnvironment: (textur
     const environment = generator.fromScene(studio, 0.02).texture
     scene.environment = environment
     scene.environmentIntensity = 1
-    onEnvironment(environment)
     return () => {
       scene.environment = null
       environment.dispose()
@@ -30,7 +30,7 @@ export default function StudioLights({ onEnvironment }: { onEnvironment: (textur
         }
       })
     }
-  }, [gl, scene, onEnvironment])
+  }, [gl, scene])
 
   return (
     <>
@@ -60,7 +60,7 @@ export default function StudioLights({ onEnvironment }: { onEnvironment: (textur
   )
 }
 
-/** The studio the turntable reflects. Brightness above 1 makes the lights brighter than the white walls would be. */
+/** The studio the gnome reflects. Brightness above 1 makes the lights brighter than the white walls would be. */
 function studioScene(): Scene {
   const studio = new Scene()
   const glow = (brightness: number, color = 0xffffff, side: Side = DoubleSide) => {

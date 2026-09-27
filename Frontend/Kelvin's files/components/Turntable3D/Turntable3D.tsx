@@ -1,14 +1,16 @@
 import { Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { NeutralToneMapping, VSMShadowMap, type Texture } from 'three'
+import { NeutralToneMapping, VSMShadowMap } from 'three'
 import StudioLights from './StudioLights'
 import CameraRig from './CameraRig'
 import TurntableModel, { type TurntableModelProps } from './TurntableModel'
 
 /** Sharper than 1.5× on a retina screen costs a lot of GPU for little to see; a MacBook Air stays smooth. */
 const MAX_PIXEL_RATIO = 1.5
+/** Renderer options; the stencil buffer is what cuts the HUM button's hole in the plinth (HumKey3D). */
+const GL = { antialias: true, alpha: true, stencil: true, toneMapping: NeutralToneMapping }
 
-export interface Turntable3DProps extends Omit<TurntableModelProps, 'onHover' | 'environment'> {
+export interface Turntable3DProps extends Omit<TurntableModelProps, 'onHover'> {
   /** What tapping the record does now, e.g. "Pause the record". */
   label: string
 }
@@ -23,7 +25,6 @@ export default function Turntable3D({ label, ...model }: Turntable3DProps) {
   const onScreen = useOnScreen(box)
   const [dragging, setDragging] = useState(false)
   const [hovering, setHovering] = useState(false)
-  const [environment, setEnvironment] = useState<Texture | null>(null)
 
   return (
     <div ref={box} className="tt3d" style={{ cursor: model.gnome.holding || hovering ? 'pointer' : dragging ? 'grabbing' : 'grab' }}>
@@ -32,14 +33,14 @@ export default function Turntable3D({ label, ...model }: Turntable3DProps) {
         dpr={[1, MAX_PIXEL_RATIO]}
         frameloop={onScreen ? 'always' : 'never'}
         camera={{ fov: 30, near: 0.05, far: 10 }}
-        gl={{ antialias: true, alpha: true, toneMapping: NeutralToneMapping }}
+        gl={GL}
         style={{ touchAction: 'pan-y' }}
         aria-hidden="true"
       >
-        <StudioLights onEnvironment={setEnvironment} />
+        <StudioLights />
         <CameraRig onDrag={setDragging} frozen={model.gnome.holding} />
         <Suspense fallback={null}>
-          <TurntableModel {...model} environment={environment} onHover={setHovering} />
+          <TurntableModel {...model} onHover={setHovering} />
         </Suspense>
       </Canvas>
 
