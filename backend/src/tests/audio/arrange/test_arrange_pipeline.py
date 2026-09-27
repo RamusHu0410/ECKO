@@ -6,7 +6,7 @@ import json
 import pytest
 
 from app.audio import pipeline
-from app.audio.arrange import PipelineError
+from app.audio.errors import PipelineError
 
 from conftest import FIXTURE_JSON, FIXTURE_MIDI
 
@@ -23,14 +23,14 @@ def runs(tmp_path, monkeypatch):
 
 @pytest.fixture
 def upload(tmp_path):
-    """Stands in for the user's upload (the stubbed intake ignores its contents)."""
+    """Stands in for the user's upload (the fixture intake ignores its contents)."""
     path = tmp_path / "hum.wav"
     path.write_bytes(b"RIFF....WAVE")
     return path
 
 
 def test_a_run_keeps_every_step_and_logs_it(runs, upload, fake_render):
-    result = pipeline.run_pipeline(str(upload), "cinematic")
+    result = pipeline.run_pipeline(str(upload), "cinematic", intake="fixture")
     run_dir = runs / result.run_id
     assert result.run_dir == str(run_dir)
     for name in ("melody_clean.mid", "melody.json", "melody_transformed.json", "melody_transformed.mid",
@@ -44,18 +44,18 @@ def test_a_run_keeps_every_step_and_logs_it(runs, upload, fake_render):
     assert all(s["status"] == "ok" for s in log["steps"])
     assert log["input"]["sha256"] == digest(upload)
     assert log["final"] == "final.wav" and log["style"] == "cinematic" and log["intake"] == "fixture"
-    assert any("stubbed" in w for w in result.warnings)
+    assert any("fixture melody" in w for w in result.warnings)
 
 
 def test_the_stub_hands_over_the_fixture(runs, upload, fake_render):
-    result = pipeline.run_pipeline(str(upload), "pop")
+    result = pipeline.run_pipeline(str(upload), "pop", intake="fixture")
     assert result.melody.note_count == 28
     assert digest(runs / result.run_id / "melody.json") == digest(FIXTURE_JSON)
     assert digest(runs / result.run_id / "melody_clean.mid") == digest(FIXTURE_MIDI)
 
 
 def test_rerun_with_a_new_style_from_the_saved_melody(runs, upload, fake_render):
-    first = pipeline.run_pipeline(str(upload), "cinematic")
+    first = pipeline.run_pipeline(str(upload), "cinematic", intake="fixture")
     source = runs / first.run_id
     before = {p.name: digest(p) for p in source.iterdir()}
 
@@ -72,7 +72,7 @@ def test_rerun_with_a_new_style_from_the_saved_melody(runs, upload, fake_render)
 
 
 def test_rerun_only_the_effects(runs, upload, fake_render):
-    first = pipeline.run_pipeline(str(upload), "cinematic")
+    first = pipeline.run_pipeline(str(upload), "cinematic", intake="fixture")
     source = runs / first.run_id
     again = pipeline.rerun(source, "piano", from_step="effects")
     new = runs / again.run_id
@@ -98,7 +98,7 @@ def test_a_run_folder_must_start_empty(tmp_path, upload):
     (tmp_path / "busy").mkdir()
     (tmp_path / "busy" / "something").write_text("x")
     with pytest.raises(PipelineError) as caught:
-        pipeline.run_pipeline(str(upload), "pop", run_dir=str(tmp_path / "busy"))
+        pipeline.run_pipeline(str(upload), "pop", run_dir=str(tmp_path / "busy"), intake="fixture")
     assert caught.value.step == "pipeline.setup"
 
 
@@ -135,27 +135,13 @@ def test_a_handoff_with_disagreeing_files_warns(runs, upload, fake_render):
 
 
 def test_intake_is_chosen_by_name_or_environment(monkeypatch):
-    assert pipeline.get_intake("fixture") is pipeline._fixture_transcribe
-    assert pipeline.get_intake("analyzer") is pipeline._analyzer_transcribe
-    monkeypatch.setenv("PIPELINE_INTAKE", "analyzer")
-    assert pipeline.get_intake() is pipeline._analyzer_transcribe
-    with pytest.raises(PipelineError, match="Unknown intake"):
-        pipeline.get_intake("guess")
-
-
-def test_auto_intake_is_part_as_once_it_exists(monkeypatch):
-    """The plug for part A: app.audio.intake.transcribe_to_melody is used as soon as it's there."""
-    import app.audio.intake as intake_module
+    from app.audio.intake import transcribe_to_melody
 
     monkeypatch.delenv("PIPELINE_INTAKE", raising=False)
-    if not hasattr(intake_module, "transcribe_to_melody"):
-        assert pipeline.get_intake() is pipeline._fixture_transcribe
-        with pytest.raises(PipelineError, match="isn't in app.audio.intake yet"):
-            pipeline.get_intake("part_a")
-
-        def part_a(input_path, run_dir):
-            raise NotImplementedError
-
-        monkeypatch.setattr(intake_module, "transcribe_to_melody", part_a, raising=False)
-    assert pipeline.get_intake() is intake_module.transcribe_to_melody
-    assert pipeline.get_intake("part_a") is intake_module.transcribe_to_melody
+    assert pipeline.get_intake() is transcribe_to_melody  # part A's, by default
+    assert pipeline.get_intake("fixture") is pipeline._fixture_transcribe
+    monkeypatch.setenv("PIPELINE_INTAKE", "fixture")
+    assert pipeline.get_intake() is pipeline._fixture_transcribe
+    with pytest.raises(PipelineError) as caught:
+        pipeline.get_intake("guess")
+    assert caught.value.code == "unknown_intake"

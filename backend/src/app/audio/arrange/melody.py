@@ -97,6 +97,27 @@ def key_pitch_classes(name: str) -> set[int]:
     return {p.pitchClass for p in parse_key(name).getScale().getPitches("C1", "C2")}
 
 
+def scale_pitch_classes(name: str) -> list[int]:
+    """The key's seven scale degrees from the tonic (natural minor for minor keys).
+
+    music21 lists a minor scale from its relative major (F G A Bb C D E for D minor), so it's
+    rotated to start on the tonic."""
+    k = parse_key(name)
+    scale = [p.pitchClass for p in k.getScale().getPitches()[:7]]
+    start = scale.index(k.tonic.pitchClass)
+    return scale[start:] + scale[:start]
+
+
+# How each key is usually spelled (the fewest sharps or flats), by tonic pitch class.
+_MAJOR_TONICS = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+_MINOR_TONICS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"]
+
+
+def key_name(tonic_pitch_class: int, mode: str) -> str:
+    """(2, "minor") -> "D minor"."""
+    return f"{(_MAJOR_TONICS if mode == 'major' else _MINOR_TONICS)[tonic_pitch_class % 12]} {mode}"
+
+
 def beats_per_bar(time_signature: str) -> float:
     """"4/4" -> 4.0, "6/8" -> 3.0 (in quarter notes)."""
     try:

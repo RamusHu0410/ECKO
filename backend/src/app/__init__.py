@@ -16,7 +16,7 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
 
     # Ensure upload + recordings folders exist
-    for key in ('UPLOAD_FOLDER', 'RECORDINGS_FOLDER', 'STORAGE_DIR'):
+    for key in ('UPLOAD_FOLDER', 'RECORDINGS_FOLDER', 'STORAGE_DIR', 'RUNS_DIR'):
         folder = app.config.get(key)
         if folder:
             os.makedirs(folder, exist_ok=True)
@@ -39,6 +39,9 @@ def create_app(config_name=None):
     # Register blueprints
     app.register_blueprint(main_bp)  # includes /accompaniment/styles and /accompaniment/generate
     app.register_blueprint(talk_bp, url_prefix='/talk')
+    # The new song pipeline (hum -> intake -> orchestral arrangement), next to /upload + /talk/song
+    from .routes.pipeline import bp as pipeline_bp
+    app.register_blueprint(pipeline_bp)
 
     # App data (Auth0-protected, stored in TigerData): account + recordings, posts, profiles
     from .routes.account import bp as account_bp

@@ -23,12 +23,15 @@ from music21 import pitch as m21pitch
 
 from . import config
 from .config import INSTRUMENT_RANGES, Orchestration
-from .melody import Melody, empty_midi, key_pitch_classes, key_tonic_and_mode, parse_key
+from .melody import Melody, empty_midi, key_pitch_classes, key_tonic_and_mode, parse_key, scale_pitch_classes
+from .settings import DEFAULT, ENERGY_STEP, ArrangeSettings, ExtraPart
 from .transforms import fit_pitches
 
 logger = logging.getLogger(__name__)
 
-TRACKS = ("melody", "strings_pad", "bass", "brass", "percussion")
+TRACKS = ("melody", "strings_pad", "bass", "brass", "percussion")  # then any extra parts the settings add
+# Ranges for instruments a listener adds that INSTRUMENT_RANGES doesn't list, by what they play.
+_DEFAULT_RANGES = {"lead": (55, 91), "chords": (48, 79), "bass": (28, 55)}
 PANS = {"melody": 64, "strings_pad": 48, "bass": 64, "brass": 84, "percussion": 64}
 _QUALITIES = {"major": (0, 4, 7), "minor": (0, 3, 7), "diminished": (0, 3, 6), "augmented": (0, 4, 8)}
 
@@ -102,11 +105,7 @@ def harmonize(melody: Melody) -> tuple[list[ChordSpan], list[str]]:
 
 def diatonic_triads(key_name: str) -> list[tuple[int, int, int]]:
     """The triad on each degree of the key's scale (natural minor for minor keys), root first."""
-    k = parse_key(key_name)
-    scale = [p.pitchClass for p in k.getScale().getPitches()[:7]]
-    # music21 lists a minor scale from its relative major (F G A Bb C D E for D minor): rotate it.
-    start = scale.index(k.tonic.pitchClass)
-    scale = scale[start:] + scale[:start]
+    scale = scale_pitch_classes(key_name)
     return [(scale[d], scale[(d + 2) % 7], scale[(d + 4) % 7]) for d in range(7)]
 
 
@@ -242,8 +241,10 @@ def _voicings(pcs: tuple[int, ...], low: int, high: int) -> list[tuple[int, ...]
     return out
 
 
-def orchestrate(melody: Melody, orchestration: Orchestration) -> tuple[pretty_midi.PrettyMIDI, list[str]]:
-    """The arrangement MIDI, and any warnings."""
+def orchestrate(melody: Melody, orchestration: Orchestration,
+                settings: ArrangeSettings = DEFAULT) -> tuple[pretty_midi.PrettyMIDI, list[str]]:
+    """The arrangement MIDI, and any warnings. `settings` can change the lead instrument, add
+    instruments and change the energy of each half; without them it's the style as designed."""
     chords, warnings = harmonize(melody)
     phrases = find_phrases(melody)
     logger.debug("orchestrate: %d bars in %s at %g BPM", melody.bars, melody.key, melody.tempo_bpm)
@@ -266,7 +267,7 @@ def orchestrate(melody: Melody, orchestration: Orchestration) -> tuple[pretty_mi
 
     midi = empty_midi(melody)
     tracks = {
-        "melody": pretty_midi.Instrument(orchestration.lead, name="melody"),
+        "melody": pretty_midi.Instrument(orchestration.lead if settings.lead is None else settings.lead, name="melody"),
         "strings_pad": pretty_midi.Instrument(orchestration.pad, name="strings_pad"),
         "bass": pretty_midi.Instrument(orchestration.bass, name="bass"),
         "brass": pretty_midi.Instrument(orchestration.brass, name="brass"),
@@ -274,8 +275,8 @@ def orchestrate(melody: Melody, orchestration: Orchestration) -> tuple[pretty_mi
     }
 
     # Melody: moved into the lead's range as a whole (shape kept), shaped by the phrase curve.
-    low, high = INSTRUMENT_RANGES[orchestration.lead]
-    for n, p in zip(melody.notes, fit_pitches([n.pitch for n in melody.notes], low, high)):
+    low, high = INSTRUMENT_RANGES.get(tracks["melody"].program, _DEFAULT_RANGES["lead"])
+    for n, p in zip(melody.notes, fit_pitches([n.pitch for n in melody.notes], low, high, bias=settings.transpose)):
         velocity = _vel(level(n.start_beats) * n.velocity / 80)
         tracks["melody"].notes.append(pretty_midi.Note(velocity, p, sec(n.start_beats), sec(n.end_beats)))
 
@@ -364,12 +365,29 @@ def orchestrate(melody: Melody, orchestration: Orchestration) -> tuple[pretty_mi
             for eighth in range(int(bpb * 2)):
                 hit(config.CLOSED_HAT, start + eighth * 0.5, level(start) * 0.55, length=0.1)
 
+    # Instruments the listener added, each only in its section.
+    pans = dict(PANS)
+    for index, part in enumerate(settings.parts):
+        name = f"extra_{index + 1}_{part.kind}"
+        tracks[name] = _extra_part(part, name, chords, melody)
+        pans[name] = 40 + (index * 23) % 50
+
+    # Energy: each half a little calmer or bigger, every track alike.
+    if settings.energy != (0, 0):
+        half = sec(melody.bars * bpb / 2)
+        for track in tracks.values():
+            for n in track.notes:
+                n.velocity = _vel(n.velocity * (1 + ENERGY_STEP * settings.energy[0 if n.start < half else 1]))
+
     # Mix: volume and pan per track, at the start.
-    for name in TRACKS:
-        track = tracks[name]
+    volumes = dict(orchestration.volumes)
+    if settings.lead_volume is not None:
+        volumes["melody"] = settings.lead_volume
+    volumes.update({f"extra_{i + 1}_{p.kind}": p.volume for i, p in enumerate(settings.parts)})
+    for name, track in tracks.items():
         track.control_changes[:0] = [
-            pretty_midi.ControlChange(7, orchestration.volumes.get(name, 90), 0.0),
-            pretty_midi.ControlChange(10, PANS[name], 0.0),
+            pretty_midi.ControlChange(7, volumes.get(name, 90), 0.0),
+            pretty_midi.ControlChange(10, pans[name], 0.0),
         ]
         track.notes.sort(key=lambda n: (n.start, n.pitch))
         midi.instruments.append(track)
@@ -377,6 +395,42 @@ def orchestrate(melody: Melody, orchestration: Orchestration) -> tuple[pretty_mi
         logger.debug("  track %-11s program %3d%s: %3d notes, pitch %d-%d", name, track.program,
                      " (drums)" if track.is_drum else "", len(track.notes), min(pitches), max(pitches))
     return midi, warnings
+
+
+def _extra_part(part: ExtraPart, name: str, chords: list[ChordSpan], melody: Melody) -> pretty_midi.Instrument:
+    """A listener's added instrument: held chords, a bass line or a backbeat, only in its section."""
+    bpb, spb = melody.beats_per_bar, melody.seconds_per_beat
+    total = melody.bars * bpb
+    start, end = {"all": (0.0, total), "start": (0.0, total / 2), "end": (total / 2, total)}[part.section]
+    if part.kind == "drums":
+        track = pretty_midi.Instrument(0, is_drum=True, name=name)
+        bar = int(start // bpb)
+        while bar * bpb < end:
+            for beat in range(int(bpb)):
+                at = bar * bpb + beat
+                track.notes.append(pretty_midi.Note(80 if beat % 2 == 0 else 72, config.KICK if beat % 2 == 0 else config.SNARE, at * spb, (at + 0.25) * spb))
+            for eighth in range(int(bpb * 2)):
+                at = bar * bpb + eighth * 0.5
+                track.notes.append(pretty_midi.Note(50, config.CLOSED_HAT, at * spb, (at + 0.1) * spb))
+            bar += 1
+        return track
+
+    track = pretty_midi.Instrument(part.program, name=name)
+    low, high = INSTRUMENT_RANGES.get(part.program, _DEFAULT_RANGES[part.kind])
+    previous = None
+    for chord in chords:
+        on, off = max(start, chord.start_beats), min(end, chord.start_beats + chord.duration_beats)
+        if off <= on:
+            continue
+        if part.kind == "bass":
+            pitches = (_nearest_octave(chord.root, (low + high) // 2 - 5, low, high),)
+        else:
+            options = _voicings(chord.pitch_classes, low, high)
+            pitches = min(options, key=lambda v: sum(abs(a - b) for a, b in zip(v, previous)) if previous else abs(v[0] - 57))
+            previous = pitches
+        for p in pitches:
+            track.notes.append(pretty_midi.Note(70, p, on * spb, off * spb))
+    return track
 
 
 def _chord_at(chords: list[ChordSpan], beat: float) -> ChordSpan:

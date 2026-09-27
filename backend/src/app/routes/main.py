@@ -19,6 +19,7 @@ from ..audio.intake import AudioInputError, unique_upload_name
 from ..audio.processor import analyze_audio_file, clean_wav
 
 bp = Blueprint("main", __name__)
+NO_TUNE = "No tune was found in that recording. Hum a little louder, closer to the mic."
 
 # The "creepy" sound for /accompaniment/generate: FluidSynth's small demo soundfont, whose instruments
 # are all crude retro waves. Looked for next to the real soundfont first, then where Homebrew puts it.
@@ -93,7 +94,8 @@ def upload_wav():
         accompaniment   the accompanist's song for this hum: status, key, mode, progression,
                         wav_filename, and url (GET it to play the WAV; /api/song/... from the
                         browser). On failure: status "failed" + error; the upload still succeeds.
-    400 → the file isn't a usable recording: {error}
+    400 → the file isn't a usable recording: {error}; or no tune was found in it (silence, or a
+          hum too quiet to hear): {error, code: "no_tune"}. Nothing is kept either way.
     500 → the analysis itself failed: {error, details}
     """
     request_start = time.time()
@@ -125,6 +127,9 @@ def upload_wav():
     target_sr = current_app.config.get("AUDIO_TARGET_SR", 22050)
     try:
         hum = analyze_audio_file(filepath, target_sr=target_sr, keep_analysis=True)
+        if not hum["melody"]:  # nothing to make a song from; /talk/song would only refuse it later
+            _discard(filepath)
+            return jsonify({"error": NO_TUNE, "code": "no_tune"}), 400
         clean_path = clean_wav(filepath, target_sr=target_sr)
     except AudioInputError as exc:
         _discard(filepath)

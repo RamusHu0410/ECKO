@@ -86,6 +86,10 @@ export const MIC_HELP: Record<MicProblem, { title: string; body: string }> = {
     title: 'The microphone didn’t start',
     body: 'Another app may be using it. Close that app, then try again.',
   },
+  'too-short': {
+    title: 'That was too short',
+    body: 'Hold the mic, or the space bar, and hum for at least a second.',
+  },
 }
 
 export const UPLOAD_FAILED_TITLE = 'We couldn’t press your record'

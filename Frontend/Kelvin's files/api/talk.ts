@@ -73,13 +73,18 @@ export function speechUrl(speechId: string) {
   return `/api/talk/speech/${encodeURIComponent(speechId)}`
 }
 
+/** The route that makes the song from the hum and the settings: the audio pipeline's orchestral
+ *  arrangement (/pipeline/song), or talk mode's own engine (/talk/song). Both take the same body. */
+export const PIPELINE_SONG_URL = '/api/pipeline/song'
+export const TALK_SONG_URL = '/api/talk/song'
+
 /** The song made from the hum /upload saved (its `filename`). Throws UploadError, like uploadHum. */
-export async function makeSong(hum: string, settings: SongSettings, signal?: AbortSignal): Promise<Blob> {
+export async function makeSong(hum: string, settings: SongSettings, signal?: AbortSignal, url = TALK_SONG_URL): Promise<Blob> {
   let response: Response
   let body: string
   try {
     const timeout = AbortSignal.timeout(TIMEOUT_MS)
-    response = await fetch('/api/talk/song', {
+    response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hum, settings }),

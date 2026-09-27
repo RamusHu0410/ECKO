@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchNotes, makeSong, type SongNotes } from '../api/talk'
+import { PIPELINE_SONG_URL, fetchNotes, makeSong, type SongNotes } from '../api/talk'
 import { UploadError, type HumUpload } from '../api/uploadHum'
 import { ENGINE_ORDER, engineSettings, generateSong } from '../api/generateAccompaniment'
 import type { SongSettings } from './useSongSettings'
@@ -112,12 +112,13 @@ export function useSong(settings: SongSettings, advanced: boolean) {
 }
 
 /**
- * The song for these settings: talk mode's one version, or with Advanced on the three the sound
- * slider blends, in ENGINE_ORDER. /talk/song makes the piano and synth versions with all of talk
- * mode's extras; only /accompaniment/generate has the creepy soundfont, so it makes that one.
+ * The song for these settings: the audio pipeline's one version (/pipeline/song: the hum's melody,
+ * orchestrated), or with Advanced on the three the sound slider blends, in ENGINE_ORDER.
+ * /talk/song makes the piano and synth versions with all of talk mode's extras; only
+ * /accompaniment/generate has the creepy soundfont, so it makes that one.
  */
 async function songsFor(hum: HumUpload, settings: SongSettings, advanced: boolean, signal?: AbortSignal): Promise<Blob[]> {
-  if (!advanced) return [await makeSong(hum.filename, settings, signal)]
+  if (!advanced) return [await makeSong(hum.filename, settings, signal, PIPELINE_SONG_URL)]
   return Promise.all(
     ENGINE_ORDER.map((engine) =>
       engine === 'creepy'

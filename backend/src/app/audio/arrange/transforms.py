@@ -23,7 +23,8 @@ from typing import Callable
 from arvo import minimalism
 from music21 import note, stream
 
-from .melody import Melody, from_stream, key_pitch_classes, to_stream
+from .melody import Melody, Note, from_stream, key_name, key_pitch_classes, parse_key, scale_pitch_classes, to_stream
+from .settings import ArrangeSettings
 
 logger = logging.getLogger(__name__)
 
@@ -249,15 +250,48 @@ def apply_operations(melody: Melody, operations: list[tuple[str, dict]], max_bar
     return result
 
 
-def fit_pitches(pitches: list[int], low: int, high: int) -> list[int]:
+def apply_settings(melody: Melody, settings: ArrangeSettings) -> Melody:
+    """The melody at the listener's tempo, in their mode (major/minor), moved by their transposition.
+    The key name follows, so everything after stays in key."""
+    tonic = parse_key(melody.key).tonic.pitchClass
+    mode = parse_key(melody.key).mode
+    notes = list(melody.notes)
+
+    if settings.mode and settings.mode != mode:
+        # each scale degree moves to the same degree of the other mode (in D: F -> F#, Bb -> B, C -> C#)
+        source = scale_pitch_classes(melody.key)
+        target = scale_pitch_classes(key_name(tonic, settings.mode))
+        moves = {s: ((t - s + 6) % 12) - 6 for s, t in zip(source, target)}
+        notes = [Note(n.pitch + moves.get(n.pitch % 12, 0), n.start_beats, n.duration_beats, n.velocity) for n in notes]
+        mode = settings.mode
+
+    if settings.transpose:
+        notes = [Note(_fold(n.pitch + settings.transpose), n.start_beats, n.duration_beats, n.velocity) for n in notes]
+        tonic = (tonic + settings.transpose) % 12
+
+    tempo = round(min(300.0, max(20.0, melody.tempo_bpm * settings.tempo_scale)), 1)
+    return replace(melody, tempo_bpm=tempo, key=key_name(tonic, mode), notes=tuple(notes))
+
+
+def _fold(pitch: int) -> int:
+    while pitch < 0:
+        pitch += 12
+    while pitch > 127:
+        pitch -= 12
+    return pitch
+
+
+def fit_pitches(pitches: list[int], low: int, high: int, bias: int = 0) -> list[int]:
     """Move a line into an instrument's range: the whole line by octaves so its middle sits in the
-    range (keeping its shape), then any note still outside folded in by octaves."""
+    range (keeping its shape), then any note still outside folded in by octaves. `bias` (semitones)
+    aims the middle higher or lower, so a transposition by an octave is still heard."""
     if not pitches:
         return []
     if high - low < 12:
         raise ValueError("A range must span at least an octave.")
     middle = (min(pitches) + max(pitches)) / 2
-    shift = 12 * round(((low + high) / 2 - middle) / 12)
+    aim = min(high - 6, max(low + 6, (low + high) / 2 + bias))
+    shift = 12 * round((aim - middle) / 12)
     fitted = []
     for p in pitches:
         p += shift

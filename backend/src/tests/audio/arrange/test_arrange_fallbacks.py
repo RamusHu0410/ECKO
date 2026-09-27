@@ -8,7 +8,8 @@ import json
 import pytest
 import soundfile as sf
 
-from app.audio.arrange import PipelineError, arrange_and_render, steps
+from app.audio.arrange import arrange_and_render, steps
+from app.audio.errors import PipelineError
 from app.audio.arrange import effects as fx
 from app.audio.arrange.files import write_atomically
 from app.audio.arrange.melody import load_melody

@@ -1,9 +1,6 @@
-"""The socket part A plugs into: every intake must meet the pipeline contract.
-
-Runs each known intake (the fixture stub, the analyzer bridge, and part A's transcribe_to_melody
-as soon as app.audio.intake has it) on a hum and checks what it hands over. When part A lands,
-its function is tested here automatically; if it passes, the arrangement half accepts it.
-"""
+"""Every intake must meet the pipeline contract: part A's transcribe_to_melody (app/audio/intake)
+and the fixture stand-in are run on a hum, and what they hand over is checked before the
+arrangement takes it."""
 
 import hashlib
 
@@ -17,12 +14,7 @@ from app.audio.arrange.melody import load_melody
 
 
 def _intakes():
-    import app.audio.intake as intake_module
-
-    found = [("fixture", pipeline._fixture_transcribe), ("analyzer", pipeline._analyzer_transcribe)]
-    real = getattr(intake_module, "transcribe_to_melody", None)
-    found.append(("part_a", real) if real else pytest.param("part_a", None, marks=pytest.mark.skip("part A hasn't landed yet")))
-    return found
+    return [("fixture", pipeline._fixture_transcribe), ("intake", pipeline.INTAKES["intake"])]
 
 
 @pytest.fixture(scope="module")

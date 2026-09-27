@@ -5,8 +5,8 @@
     uv run python -m app.audio.arrange.demo --stems          # also render each track alone
 
   1. The fixture melody through the full pipeline (fixture intake), cinematic.
-  2. A hum (yours, or one synthesized from the fixture) -> the existing analyzer (the intake
-     bridge) -> melody.json -> arrangement, with what was sung next to what was heard.
+  2. A hum (yours, or one synthesized from the fixture) -> intake (app/audio/intake) ->
+     melody.json -> arrangement, with what was sung next to what intake heard.
   3. Run 1's saved melody re-arranged in another style (a re-run from "transform").
   4. Run 1's saved render with only new effects (a re-run from "effects").
   5. A forced effects failure, to show the fallback: final.wav is the plain render.
@@ -76,7 +76,7 @@ def _section(title: str) -> None:
 
 
 def _compare(sung: Melody, heard: Melody) -> None:
-    print("what was sung  vs  what the analyzer heard (per bar):")
+    print("what was sung  vs  what intake heard (per bar):")
     sung_bars, heard_bars = debug.bars_text(sung), debug.bars_text(heard)
     for i in range(max(len(sung_bars), len(heard_bars))):
         left = sung_bars[i].split("| ", 1)[-1] if i < len(sung_bars) else ""
@@ -115,13 +115,13 @@ def main(argv: list[str] | None = None) -> None:
     print(debug.describe(first.run_dir))
     listen.append((f"1. fixture, {args.style}", first.final_wav_path))
 
-    _section("2. A hum -> the analyzer (intake bridge) -> arrangement")
+    _section("2. A hum -> intake -> arrangement: the whole pipeline")
     if args.input:
         hum = Path(args.input)
     else:
         hum = synthesize_hum(fixture, Path(first.run_dir).parent / "demo_inputs" / f"hum_{first.run_id}.wav")
         print(f"synthesized a hum of the fixture: {hum}")
-    second = pipeline.run_pipeline(str(hum), args.style, intake="analyzer")
+    second = pipeline.run_pipeline(str(hum), args.style, intake="intake")
     heard = load_melody(Path(second.run_dir) / "melody.json")
     if not args.input:
         _compare(fixture, heard)

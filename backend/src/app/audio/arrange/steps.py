@@ -23,12 +23,13 @@ import soundfile as sf
 
 from . import effects as fx
 from .config import get_style, resolve_style
-from .errors import PipelineError
+from app.audio.errors import PipelineError
 from .files import copy_atomically, write_atomically
 from .melody import load_melody, save_melody_json, save_melody_midi
 from .orchestrate import TRACKS, orchestrate
 from .render import render
-from .transforms import MelodyTooLong, apply_operations
+from .settings import DEFAULT, ArrangeSettings
+from .transforms import MelodyTooLong, apply_operations, apply_settings
 from .validate import validate_midi
 
 logger = logging.getLogger(__name__)
@@ -67,14 +68,17 @@ class RenderResult:
     style: str = ""  # the style used (an unknown word becomes the default)
 
 
-def _error(step: str, message: str) -> PipelineError:
+def _error(step: str, message: str, code: str) -> PipelineError:
     """A PipelineError for the arrangement step `step`. `message` is shown to users, so it says
-    what went wrong in plain words; the technical cause is chained (raise ... from exc) and logged."""
-    return PipelineError(f"arrange.{step}", message)
+    what went wrong in plain words; `code` is for code to check; the technical cause is chained
+    (raise ... from exc) and logged."""
+    return PipelineError(f"arrange.{step}", message, code=code)
 
 
-def arrange_and_render(melody_json_path: str, style: str, run_dir: str) -> RenderResult:
-    """The contract's entry point: melody.json -> final.wav, all files in `run_dir`."""
+def arrange_and_render(melody_json_path: str, style: str, run_dir: str,
+                       settings: ArrangeSettings = DEFAULT) -> RenderResult:
+    """The contract's entry point: melody.json -> final.wav, all files in `run_dir`. `settings` are
+    a listener's changes on top of the style (tempo, key, instruments...); by default none."""
     run = Path(run_dir)
     run.mkdir(parents=True, exist_ok=True)
     target = run / FILES["melody"]
@@ -84,8 +88,8 @@ def arrange_and_render(melody_json_path: str, style: str, run_dir: str) -> Rende
             copy_atomically(source, target, validate=load_melody)
         except (OSError, ValueError) as exc:
             logger.error("transform: can't take %s as the melody: %s", source, exc)
-            raise _error("transform", "The melody from your recording couldn't be read.") from exc
-    return run_steps(run, style)
+            raise _error("transform", "The melody from your recording couldn't be read.", "bad_melody") from exc
+    return run_steps(run, style, settings=settings)
 
 
 def run_steps(
@@ -94,21 +98,22 @@ def run_steps(
     start: str = "transform",
     on_step: Callable[[StepReport], None] | None = None,
     soundfont: str | Path | None = None,
+    settings: ArrangeSettings = DEFAULT,
 ) -> RenderResult:
     """Run the steps from `start` to the end. The input `start` needs must already be in `run_dir`."""
     if start not in STEPS:
-        raise _error(start, f"Can't start from '{start}'; choose one of {', '.join(STEPS)}.")
+        raise _error(start, f"Can't start from '{start}'; choose one of {', '.join(STEPS)}.", "unknown_step")
     style, style_warning = resolve_style(style)
     preset = get_style(style)
     run = Path(run_dir)
     needed = run / FILES[STEP_INPUT[start]]
     if not needed.is_file():
-        raise _error(start, f"{needed.name} isn't in {run}, so this step can't start.")
+        raise _error(start, f"{needed.name} isn't in {run}, so this step can't start.", "missing_input")
 
     reports: list[StepReport] = []
     for step in STEPS[STEPS.index(start):]:
         began = time.monotonic()
-        report = _STEP_FUNCTIONS[step](run, preset, soundfont)
+        report = _STEP_FUNCTIONS[step](run, preset, soundfont, settings)
         report.seconds = round(time.monotonic() - began, 3)
         logger.info("%s: %.2f s -> %s%s", step, report.seconds, ", ".join(Path(p).name for p in report.outputs.values()),
                     " (fell back)" if report.fell_back else "")
@@ -131,14 +136,19 @@ def run_steps(
     )
 
 
-def _transform(run: Path, preset, _soundfont) -> StepReport:
+def _transform(run: Path, preset, _soundfont, settings: ArrangeSettings) -> StepReport:
     try:
         melody = load_melody(run / FILES["melody"])
     except (OSError, ValueError) as exc:
         logger.error("transform: melody.json is unusable: %s", exc)
-        raise _error("transform", "The melody from your recording couldn't be read.") from exc
+        raise _error("transform", "The melody from your recording couldn't be read.", "bad_melody") from exc
 
     warnings, fell_back = [], False
+    try:
+        melody = apply_settings(melody, settings)  # the listener's tempo, key and mode first
+    except Exception as exc:  # noqa: BLE001 - carry on without them
+        fell_back = True
+        warnings.append(f"The tempo/key changes couldn't be applied ({exc}); using the melody as sung.")
     try:
         transformed = apply_operations(melody, preset.transforms)
     except MelodyTooLong:  # a long tune doesn't need lengthening: not a failure
@@ -153,14 +163,14 @@ def _transform(run: Path, preset, _soundfont) -> StepReport:
         midi_path = save_melody_midi(transformed, run / FILES["melody_midi"])
     except (OSError, ValueError) as exc:
         logger.error("transform: couldn't write the transformed melody: %s", exc)
-        raise _error("transform", "The song couldn't be saved.") from exc
+        raise _error("transform", "The song couldn't be saved.", "write_failed") from exc
     return StepReport("transform", {"melody": str(json_path), "midi": str(midi_path)}, warnings, fell_back)
 
 
-def _orchestrate(run: Path, preset, _soundfont) -> StepReport:
+def _orchestrate(run: Path, preset, _soundfont, settings: ArrangeSettings) -> StepReport:
     try:
         melody = load_melody(run / FILES["transform"])
-        midi, warnings = orchestrate(melody, preset.orchestration)
+        midi, warnings = orchestrate(melody, preset.orchestration, settings)
         path = write_atomically(
             run / FILES["orchestrate"],
             lambda tmp: midi.write(str(tmp)),
@@ -168,34 +178,34 @@ def _orchestrate(run: Path, preset, _soundfont) -> StepReport:
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("orchestrate: %s", exc)
-        raise _error("orchestrate", "Your melody couldn't be arranged for the orchestra.") from exc
+        raise _error("orchestrate", "Your melody couldn't be arranged for the orchestra.", "arrange_failed") from exc
     return StepReport("orchestrate", {"midi": str(path)}, warnings)
 
 
-def _render(run: Path, _preset, soundfont) -> StepReport:
+def _render(run: Path, _preset, soundfont, _settings) -> StepReport:
     try:
         path = render(run / FILES["orchestrate"], run / FILES["render"], soundfont)
     except Exception as exc:  # noqa: BLE001
         logger.error("render: %s", exc)
-        raise _error("render", "The arrangement couldn't be turned into sound.") from exc
+        raise _error("render", "The arrangement couldn't be turned into sound.", "render_failed") from exc
     return StepReport("render", {"wav": str(path)})
 
 
-def _effects(run: Path, preset, _soundfont) -> StepReport:
+def _effects(run: Path, preset, _soundfont, _settings) -> StepReport:
     source, target = run / FILES["render"], run / FILES["effects"]
     try:
         path = fx.apply_effects(source, target, preset.effects)
         return StepReport("effects", {"wav": str(path)})
     except FileExistsError as exc:
         logger.error("effects: %s", exc)
-        raise _error("effects", "The finished song couldn't be saved.") from exc
+        raise _error("effects", "The finished song couldn't be saved.", "write_failed") from exc
     except Exception as exc:  # noqa: BLE001 - fall back to the render as it is
         warning = f"The effects failed ({exc}); final.wav is the render without them."
     try:
         path = fx.copy_without_effects(source, target)
     except Exception as exc:  # noqa: BLE001
         logger.error("effects: the effects failed and so did the plain copy: %s", exc)
-        raise _error("effects", "The finished song couldn't be saved.") from exc
+        raise _error("effects", "The finished song couldn't be saved.", "write_failed") from exc
     return StepReport("effects", {"wav": str(path)}, [warning], fell_back=True)
 
 

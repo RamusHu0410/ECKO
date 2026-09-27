@@ -5,13 +5,16 @@ See steps.py for the files each step writes, and config.py for the styles.
 """
 
 from .config import STYLES
-from .errors import PipelineError
+from .settings import ArrangeSettings, ExtraPart
+from app.audio.errors import PipelineError  # shared with intake
 from .steps import FILES, STEPS, RenderResult, StepReport, arrange_and_render, run_steps
 
 __all__ = [
     "FILES",
     "STEPS",
     "STYLES",
+    "ArrangeSettings",
+    "ExtraPart",
     "PipelineError",
     "RenderResult",
     "StepReport",

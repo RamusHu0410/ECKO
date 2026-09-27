@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** Longest hum we record. Recording stops on its own at this point. */
 export const MAX_RECORDING_MS = 10_000
+/** Shorter than this is a tap, not a hum: the browser can't even decode it, so it isn't sent. */
+const MIN_RECORDING_MS = 500
 
 export type RecorderPhase = 'idle' | 'requesting' | 'recording' | 'pressing' | 'done' | 'error'
 
-/** Why the microphone couldn't start, so the UI can explain how to fix it. */
-export type MicProblem = 'blocked' | 'no-microphone' | 'insecure' | 'unsupported' | 'unavailable'
+/** Why the microphone couldn't start (or the hum was only a tap), so the UI can explain how to fix it. */
+export type MicProblem = 'blocked' | 'no-microphone' | 'insecure' | 'unsupported' | 'unavailable' | 'too-short'
 
 export interface Recorder {
   phase: RecorderPhase
@@ -40,6 +42,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
   const phaseRef = useRef<RecorderPhase>('idle')
   const recorderRef = useRef<MediaRecorder | null>(null)
   const frameRef = useRef(0)
+  const startedAtRef = useRef(0)
 
   const goTo = useCallback((next: RecorderPhase) => {
     phaseRef.current = next
@@ -59,6 +62,13 @@ export function useRecorder(pressDurationMs: number): Recorder {
     if (!recorder || recorder.state === 'inactive') return
     cancelAnimationFrame(frameRef.current)
     recorderRef.current = null
+    if (performance.now() - startedAtRef.current < MIN_RECORDING_MS) {
+      recorder.onstop = () => recorder.stream.getTracks().forEach((track) => track.stop())
+      recorder.stop()
+      setStream(null)
+      fail('too-short')
+      return
+    }
     recorder.stop()
     goTo('pressing')
 
@@ -70,7 +80,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
       else goTo('done')
     }
     frameRef.current = requestAnimationFrame(tick)
-  }, [goTo, pressDurationMs])
+  }, [fail, goTo, pressDurationMs])
 
   const start = useCallback(async () => {
     const current = phaseRef.current
@@ -123,6 +133,7 @@ export function useRecorder(pressDurationMs: number): Recorder {
     goTo('recording')
 
     const startedAt = performance.now()
+    startedAtRef.current = startedAt
     const tick = (now: number) => {
       const elapsed = Math.min(MAX_RECORDING_MS, now - startedAt)
       setElapsedMs(elapsed)

@@ -44,6 +44,9 @@ class Config:
     # Files go to <STORAGE_DIR>/recordings/<user_id>/<recording_id>.<ext>; see app/storage.py.
     STORAGE_DIR = os.environ.get('STORAGE_DIR') or os.path.join(basedir, '..', '..', 'storage')
 
+    # One folder per song the pipeline makes (app/audio/pipeline.py): every step's files and a log.
+    RUNS_DIR = os.environ.get('RUNS_DIR') or os.path.join(basedir, '..', '..', 'storage', 'runs')
+
     # --- Auth0 (identity provider) -------------------------------------
     # Auth0 owns identity. The backend only validates access tokens Auth0
     # issues and links requests to app data via the "sub" claim.

@@ -47,6 +47,8 @@ if os.environ.get("VERCEL") or not os.access(_ROOT, os.W_OK):
     _use_writable_dir("RECORDINGS_FOLDER", os.path.join(_TMP, "recordings"))
     # Saved account recordings (app/storage.py). /tmp is per-instance and temporary on Vercel.
     _use_writable_dir("STORAGE_DIR", os.path.join(_TMP, "storage"))
+    # The song pipeline's run folders (app/audio/pipeline.py).
+    _use_writable_dir("RUNS_DIR", os.path.join(_TMP, "runs"))
     # librosa compiles with numba's cache=True, which writes next to the package by default. On a
     # read-only filesystem that fails at `import librosa` ("no locator available for file").
     _use_writable_dir("NUMBA_CACHE_DIR", os.path.join(_TMP, "numba_cache"))
