@@ -15,14 +15,16 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
+import pretty_midi
 import soundfile as sf
 
 from . import effects as fx
 from .config import get_style, resolve_style
+from .ensembles import choose as choose_ensemble
 from app.audio.errors import PipelineError
 from .files import copy_atomically, write_atomically
 from .melody import load_melody, save_melody_json, save_melody_midi
@@ -35,6 +37,7 @@ from .validate import validate_midi
 logger = logging.getLogger(__name__)
 
 STEPS = ("transform", "orchestrate", "render", "effects")
+KIT_NAMES = {0: "standard", 8: "room", 16: "power", 24: "electronic", 25: "TR-808", 32: "jazz", 40: "brush", 48: "orchestra"}
 
 FILES = {
     "melody": "melody.json",
@@ -56,6 +59,7 @@ class StepReport:
     warnings: list[str] = field(default_factory=list)
     fell_back: bool = False
     seconds: float = 0.0
+    info: dict = field(default_factory=dict)  # what the step chose (e.g. the ensemble and its instruments)
 
 
 @dataclass
@@ -66,6 +70,7 @@ class RenderResult:
     warnings: list[str]
     steps: list[StepReport] = field(default_factory=list)
     style: str = ""  # the style used (an unknown word becomes the default)
+    ensemble: str = ""  # who played it: orchestra, band, electronic, chamber
 
 
 def _error(step: str, message: str, code: str) -> PipelineError:
@@ -133,6 +138,7 @@ def run_steps(
         warnings=[w for r in reports for w in r.warnings],
         steps=reports,
         style=style,
+        ensemble=next((r.info.get("ensemble", "") for r in reports if r.step == "orchestrate"), ""),
     )
 
 
@@ -181,7 +187,8 @@ def _arranged(melody, preset, settings: ArrangeSettings):
 def _orchestrate(run: Path, preset, _soundfont, settings: ArrangeSettings) -> StepReport:
     try:
         melody = load_melody(run / FILES["transform"])
-        midi, warnings = orchestrate(melody, preset.orchestration, settings)
+        ensemble, orchestration, _ = choose_ensemble(preset, settings.ensemble, settings.variation)
+        midi, warnings = orchestrate(melody, orchestration, settings)
         path = write_atomically(
             run / FILES["orchestrate"],
             lambda tmp: midi.write(str(tmp)),
@@ -190,7 +197,9 @@ def _orchestrate(run: Path, preset, _soundfont, settings: ArrangeSettings) -> St
     except Exception as exc:  # noqa: BLE001
         logger.error("orchestrate: %s", exc)
         raise _error("orchestrate", "Your melody couldn't be arranged for the orchestra.", "arrange_failed") from exc
-    return StepReport("orchestrate", {"midi": str(path)}, warnings)
+    instruments = {i.name: (f"{KIT_NAMES.get(i.program, 'drum')} kit" if i.is_drum else pretty_midi.program_to_instrument_name(i.program))
+                   for i in midi.instruments}
+    return StepReport("orchestrate", {"midi": str(path)}, warnings, info={"ensemble": ensemble, "instruments": instruments})
 
 
 def _render(run: Path, _preset, soundfont, _settings) -> StepReport:
@@ -202,10 +211,13 @@ def _render(run: Path, _preset, soundfont, _settings) -> StepReport:
     return StepReport("render", {"wav": str(path)})
 
 
-def _effects(run: Path, preset, _soundfont, _settings) -> StepReport:
+def _effects(run: Path, preset, _soundfont, settings: ArrangeSettings) -> StepReport:
     source, target = run / FILES["render"], run / FILES["effects"]
+    _, _, reverb_scale = choose_ensemble(preset, settings.ensemble, settings.variation)
+    effects = replace(preset.effects, reverb_wet=min(1.0, preset.effects.reverb_wet * reverb_scale),
+                      reverb_room_size=min(1.0, preset.effects.reverb_room_size * (0.5 + reverb_scale / 2)))
     try:
-        path = fx.apply_effects(source, target, preset.effects)
+        path = fx.apply_effects(source, target, effects)
         return StepReport("effects", {"wav": str(path)})
     except FileExistsError as exc:
         logger.error("effects: %s", exc)

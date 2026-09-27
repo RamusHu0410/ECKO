@@ -128,7 +128,7 @@ class RunLog:
         self.save()
 
     def step(self, step: str, *, outputs=None, warnings=None, fell_back=False, seconds=None, status="ok",
-             error=None, detail=None):
+             error=None, detail=None, info=None):
         self.data["steps"].append({
             "step": step,
             "status": status,
@@ -139,12 +139,13 @@ class RunLog:
             "fell_back": fell_back,
             **({"error": error} if error else {}),
             **({"detail": detail} if detail else {}),
+            **(info or {}),
         })
         self.save()
 
     def arrange_step(self, report: StepReport) -> None:
         self.step(report.step, outputs=report.outputs, warnings=report.warnings,
-                  fell_back=report.fell_back, seconds=report.seconds)
+                  fell_back=report.fell_back, seconds=report.seconds, info=report.info)
 
     def finish(self, status: str, **fields) -> None:
         self.data.update(status=status, finished_at=_now(), **fields)
@@ -296,7 +297,7 @@ def _finish(run: Path, log: RunLog, render: RenderResult, melody: MelodyResult |
     warnings = (melody.warnings if melody else []) + render.warnings
     fell_back = render.fell_back or bool(melody and melody.fell_back)
     log.finish("ok", final=Path(render.final_wav_path).name, duration_seconds=render.duration_seconds,
-               style_used=render.style, fell_back=fell_back, warnings=warnings)
+               style_used=render.style, ensemble=render.ensemble, fell_back=fell_back, warnings=warnings)
     return PipelineResult(
         run_id=run.name,
         run_dir=str(run),
@@ -314,7 +315,9 @@ def main(argv: list[str] | None = None) -> None:
     """Command line:
 
         uv run python -m app.audio.pipeline run <upload.wav> [--style cinematic] [--intake intake|fixture]
+                                                 [--ensemble orchestra|band|electronic|chamber] [--variation N]
         uv run python -m app.audio.pipeline rerun <run_dir> <style> [--from transform|orchestrate|render|effects]
+                                                 [--ensemble ...] [--variation N]
         uv run python -m app.audio.pipeline describe <run_dir>
         uv run python -m app.audio.pipeline stems <run_dir>
     """
@@ -324,6 +327,7 @@ def main(argv: list[str] | None = None) -> None:
     from dotenv import load_dotenv
 
     from app.audio.arrange import debug
+    from app.audio.arrange.ensembles import ENSEMBLES
 
     load_dotenv(BACKEND_ROOT / ".env")  # SOUNDFONT_PATH, RUNS_DIR, PIPELINE_INTAKE
     parser = argparse.ArgumentParser(prog="python -m app.audio.pipeline")
@@ -333,10 +337,15 @@ def main(argv: list[str] | None = None) -> None:
     run_cmd.add_argument("input")
     run_cmd.add_argument("--style", default="cinematic")
     run_cmd.add_argument("--intake", default=None)
+    for command in (run_cmd,):
+        command.add_argument("--ensemble", choices=sorted(ENSEMBLES), help="who plays (default: the style's own orchestra)")
+        command.add_argument("--variation", type=int, help="picks the instruments (and the ensemble, if none is named)")
     rerun_cmd = commands.add_parser("rerun", help="a new run from a saved run's step")
     rerun_cmd.add_argument("run_dir")
     rerun_cmd.add_argument("style")
     rerun_cmd.add_argument("--from", dest="from_step", default="transform", choices=STEPS)
+    rerun_cmd.add_argument("--ensemble", choices=sorted(ENSEMBLES), help="who plays (default: the style's own orchestra)")
+    rerun_cmd.add_argument("--variation", type=int, help="picks the instruments (and the ensemble, if none is named)")
     commands.add_parser("describe", help="a report of a run").add_argument("run_dir")
     commands.add_parser("stems", help="each track of a run rendered alone").add_argument("run_dir")
     args = parser.parse_args(argv)
@@ -349,10 +358,11 @@ def main(argv: list[str] | None = None) -> None:
         for path in debug.render_stems(args.run_dir):
             print(path)
         return
+    settings = ArrangeSettings(ensemble=args.ensemble, variation=args.variation)
     if args.command == "rerun":
-        result = rerun(args.run_dir, args.style, args.from_step)
+        result = rerun(args.run_dir, args.style, args.from_step, settings=settings)
     else:
-        result = run_pipeline(args.input, args.style, intake=args.intake)
+        result = run_pipeline(args.input, args.style, intake=args.intake, settings=settings)
     print(debug.describe(result.run_dir))
     print(f"\nfinal: {result.final_wav_path}")
 

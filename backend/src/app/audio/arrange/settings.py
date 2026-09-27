@@ -38,6 +38,8 @@ class ArrangeSettings:
     lead_volume: int | None = None  # MIDI channel volume for the melody; None: the style's
     parts: tuple[ExtraPart, ...] = field(default_factory=tuple)
     energy: tuple[int, int] = (0, 0)  # the first and second half: -2 (calmest) to 2 (biggest)
+    ensemble: str | None = None  # who plays: "orchestra", "band", "electronic", "chamber" (ensembles.py)
+    variation: int | None = None  # a seed: picks the ensemble (if none is named) and its instruments
 
     def __post_init__(self):
         if not 0.25 <= self.tempo_scale <= 2.0:
@@ -50,6 +52,11 @@ class ArrangeSettings:
             raise ValueError("lead must be a MIDI program, 0-127.")
         if not all(-2 <= e <= 2 for e in self.energy):
             raise ValueError("energy must be between -2 and 2.")
+        if self.ensemble is not None:
+            from .ensembles import ENSEMBLES
+
+            if self.ensemble not in ENSEMBLES:
+                raise ValueError(f"Unknown ensemble {self.ensemble!r}; choose one of {', '.join(sorted(ENSEMBLES))}.")
 
     @property
     def is_default(self) -> bool:

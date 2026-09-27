@@ -75,7 +75,8 @@ def describe(run_dir: str | Path) -> str:
     log_path = run / "run.json"
     if log_path.is_file():
         log = json.loads(log_path.read_text())
-        out.append(f"status {log.get('status')}  style {log.get('style')}  from step {log.get('start_step')}"
+        out.append(f"status {log.get('status')}  style {log.get('style')}  ensemble {log.get('ensemble') or '-'}"
+                   f"  from step {log.get('start_step')}"
                    f"  intake {log.get('intake', '-')}  parent {Path(log['parent_run']).name if log.get('parent_run') else '-'}")
         out.append("steps:")
         for step in log.get("steps", []):

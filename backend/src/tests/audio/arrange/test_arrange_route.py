@@ -105,7 +105,9 @@ def test_the_page_route_answers_like_talk_song(app, client, fake_render):
     assert r.data[:4] == b"RIFF"
     run = Path(app.config["RUNS_DIR"]) / r.headers["X-Run-Id"]
     log = __import__("json").loads((run / "run.json").read_text())
-    assert log["style"] == "cinematic" and log["settings"]["lead"] == 89  # no style yet; the page's synth pad leads
+    assert log["style"] == "cinematic"  # no style picked on the page yet
+    assert log["settings"]["lead"] is None  # the page's starting "synth pad" isn't a choice: the ensemble's lead plays
+    assert r.headers["X-Ensemble"] in ("orchestra", "band", "electronic", "chamber")
 
 
 def test_a_settings_change_reuses_the_melody(app, client, fake_render, monkeypatch):
@@ -173,4 +175,30 @@ def test_upload_uses_intake_and_the_song_reuses_its_melody(app, client, fake_ren
     assert client.post("/pipeline/song", json={"hum": reply["filename"], "settings": PAGE_SETTINGS}).status_code == 200
     assert client.post("/pipeline/notes", json={"hum": reply["filename"], "settings": PAGE_SETTINGS}).status_code == 200
     assert len(calls) == 1
+
+
+def test_each_recording_gets_its_own_band_and_keeps_it(app, client, fake_render, tmp_path):
+    """Every recording (even of the same hum) gets a new combination; changing its settings keeps it."""
+    ensembles = set()
+    for i in range(8):  # the same hum, recorded eight times
+        name = f"recording-{i:012x}.wav"
+        shutil.copy(HUM_WAV, Path(app.config["UPLOAD_FOLDER"]) / name)
+        first = client.post("/pipeline/song", json={"hum": name, "settings": PAGE_SETTINGS})
+        again = client.post("/pipeline/song", json={"hum": name, "settings": {**PAGE_SETTINGS, "speed": 0.7}})
+        assert first.headers["X-Ensemble"] == again.headers["X-Ensemble"]
+        ensembles.add(first.headers["X-Ensemble"])
+    assert len(ensembles) >= 2
+
+
+def test_asking_for_rock_gets_the_band_and_a_chosen_lead_is_kept(app, client, fake_render):
+    import json
+
+    shutil.copy(HUM_WAV, Path(app.config["UPLOAD_FOLDER"]) / "hum_1.wav")
+    rock = client.post("/pipeline/song", json={"hum": "hum_1.wav", "settings": {**PAGE_SETTINGS, "style": "rock"}})
+    assert rock.headers["X-Ensemble"] == "band"
+    violin = {**PAGE_SETTINGS, "instruments": [{"name": "violin", "role": "lead", "level": "normal", "section": "all"}]}
+    r = client.post("/pipeline/song", json={"hum": "hum_1.wav", "settings": violin})
+    log = json.loads((Path(app.config["RUNS_DIR"]) / r.headers["X-Run-Id"] / "run.json").read_text())
+    assert log["settings"]["lead"] == 40
+    assert next(s for s in log["steps"] if s["step"] == "orchestrate")["instruments"]["melody"] == "Violin"
 

@@ -23,6 +23,14 @@ STRING_ENSEMBLE, SLOW_STRINGS = 48, 49
 ACOUSTIC_BASS, FINGER_BASS = 32, 33
 STEEL_GUITAR = 25
 HARP, TIMPANI = 46, 47
+ELECTRIC_PIANO_2, DRAWBAR_ORGAN, ROCK_ORGAN = 5, 16, 18
+NYLON_GUITAR, CLEAN_GUITAR, OVERDRIVEN_GUITAR, DISTORTION_GUITAR = 24, 27, 29, 30
+PICKED_BASS, SYNTH_BASS_1, SYNTH_BASS_2 = 34, 38, 39
+VIOLA, CHOIR, TROMBONE, SYNTH_BRASS, ALTO_SAX, CLARINET = 41, 52, 57, 62, 65, 71
+SQUARE_LEAD, SAW_LEAD, CHARANG = 80, 81, 84
+WARM_PAD, POLYSYNTH, CHOIR_PAD, SWEEP_PAD, CRYSTAL = 89, 90, 91, 95, 98
+# Drum kits (the program on the drum channel; General MIDI 2 / GS numbers, which GeneralUser GS has).
+STANDARD_KIT, POWER_KIT, ELECTRONIC_KIT, TR808_KIT, BRUSH_KIT = 0, 16, 24, 25, 40
 TRUMPET, FRENCH_HORN, BRASS_SECTION = 56, 60, 61
 OBOE, FLUTE = 68, 73
 
@@ -47,10 +55,35 @@ INSTRUMENT_RANGES: dict[int, tuple[int, int]] = {
     STEEL_GUITAR: (40, 76),
     HARP: (36, 91),
     TIMPANI: (38, 57),
+    ELECTRIC_PIANO_2: (40, 88),
+    DRAWBAR_ORGAN: (36, 91),
+    ROCK_ORGAN: (36, 91),
+    NYLON_GUITAR: (40, 79),
+    CLEAN_GUITAR: (40, 84),
+    OVERDRIVEN_GUITAR: (40, 84),
+    DISTORTION_GUITAR: (40, 84),
+    PICKED_BASS: (28, 55),
+    SYNTH_BASS_1: (28, 58),
+    SYNTH_BASS_2: (28, 58),
+    VIOLA: (48, 88),
+    CHOIR: (48, 79),
+    TROMBONE: (40, 72),
+    SYNTH_BRASS: (43, 79),
+    ALTO_SAX: (49, 81),
+    CLARINET: (50, 91),
+    SQUARE_LEAD: (55, 91),
+    SAW_LEAD: (55, 91),
+    CHARANG: (52, 88),
+    WARM_PAD: (43, 84),
+    POLYSYNTH: (43, 84),
+    CHOIR_PAD: (43, 84),
+    SWEEP_PAD: (43, 84),
+    CRYSTAL: (60, 96),
 }
 
 # General MIDI percussion (channel 10) notes used for orchestral hits.
 KICK, SNARE, CLOSED_HAT, CRASH, CONCERT_BASS_DRUM = 36, 38, 42, 49, 35
+CLAP, OPEN_HAT, RIDE, LOW_TOM, MID_TOM, HIGH_TOM = 39, 46, 51, 45, 47, 50
 
 
 @dataclass(frozen=True)
@@ -61,11 +94,15 @@ class Orchestration:
     brass: int  # swells into phrase peaks
     figure: int  # the moving accompaniment (ostinato, arpeggio, strumming...)
     double: int  # a second instrument on the tune, from the second section on
-    figure_pattern: str = "ostinato"  # "ostinato" | "alberti" | "arpeggio" | "comping" | "broken"
+    figure_pattern: str = "ostinato"  # "ostinato" | "alberti" | "arpeggio" | "comping" | "broken" |
+    #                                   "power" (driving power chords) | "arp16" (fast synth arpeggio)
     double_octave: int = 0  # the doubling's octave relative to the lead: -1, 0 or 1
     timpani: bool = False  # timpani on phrase starts and rolling into each peak
     bass_pattern: str = "whole"  # "whole" | "half" | "pulse" (eighths)
-    percussion: str = "hits"  # "hits" (downbeat hits, rolls into peaks) | "groove" (backbeat)
+    percussion: str = "hits"  # "hits" (downbeat hits, rolls into peaks) | "groove" (backbeat) |
+    #                           "rock" (a drum kit with fills into peaks) | "electronic" (four on the
+    #                           floor) | "light" (brushes)
+    kit: int = STANDARD_KIT  # the drum kit on the drum channel
     dynamics: tuple[int, int] = (58, 104)  # velocity at a phrase's start, and at its peak
     volumes: dict[str, int] = field(
         default_factory=lambda: {"melody": 110, "melody_double": 90, "strings_pad": 70, "figure": 110, "bass": 92,

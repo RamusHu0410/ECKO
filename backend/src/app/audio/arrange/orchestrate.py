@@ -286,7 +286,7 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
         "bass": pretty_midi.Instrument(orchestration.bass, name="bass"),
         "brass": pretty_midi.Instrument(orchestration.brass, name="brass"),
         **({"timpani": pretty_midi.Instrument(config.TIMPANI, name="timpani")} if orchestration.timpani else {}),
-        "percussion": pretty_midi.Instrument(0, is_drum=True, name="percussion"),
+        "percussion": pretty_midi.Instrument(orchestration.kit, is_drum=True, name="percussion"),
     }
 
     # Melody: moved into the lead's range as a whole (shape kept), shaped by the phrase curve.
@@ -392,31 +392,73 @@ def orchestrate(melody: Melody, orchestration: Orchestration,
                     drum(target * bpb - 1 + i * 0.125, 40 + 8 * i, length=0.12)
             drum(target * bpb, high_dyn + 8, length=2.0 if target == melody.bars - 1 else 1.0)
 
-    # Percussion, on the General MIDI drum channel.
+    # Percussion, on the General MIDI drum channel, in the ensemble's kit and its way of playing.
     drums = tracks["percussion"]
+    mode = orchestration.percussion
 
     def hit(note_number: int, beat: float, velocity: float, length: float = 0.25) -> None:
         drums.notes.append(pretty_midi.Note(_vel(velocity), note_number, sec(beat), sec(beat + length)))
 
-    for phrase in phrases:
-        hit(config.CONCERT_BASS_DRUM, phrase.start_bar * bpb, _level(phrase.start_bar, phrase, low_dyn, high_dyn))
+    # Every mode lands a crash on each peak's downbeat; the sparse ones also mark each phrase.
     for target in targets:
-        hit(config.CONCERT_BASS_DRUM, target * bpb, high_dyn + 10)
-        hit(config.CRASH, target * bpb, high_dyn + 6, length=1.0)
-    if orchestration.percussion == "hits":
+        hit(config.CRASH, target * bpb, (high_dyn + 6) * (0.7 if mode == "light" else 1.0), length=1.0)
+    if mode in ("hits", "light"):
+        drum = config.CONCERT_BASS_DRUM if mode == "hits" else config.KICK
+        for phrase in phrases:
+            hit(drum, phrase.start_bar * bpb, _level(phrase.start_bar, phrase, low_dyn, high_dyn) * (0.7 if mode == "light" else 1.0))
+        for target in targets:
+            hit(drum, target * bpb, (high_dyn + 10) * (0.7 if mode == "light" else 1.0))
+    build_up = {target - 1 for target in targets if target >= 1}  # the bars leading into a peak
+
+    if mode == "hits":
         # A snare roll crescendo through the beat before each peak.
         for target in targets:
             if target < 1:
                 continue
             for i in range(4):
                 hit(config.SNARE, target * bpb - 1 + i * 0.25, 45 + 15 * i, length=0.2)
-    else:  # "groove": a backbeat under every bar
+    elif mode == "groove":  # a backbeat under every bar
         for bar in range(melody.bars):
             start = bar * bpb
             for beat in range(int(bpb)):
                 hit(config.KICK if beat % 2 == 0 else config.SNARE, start + beat, level(start) * (0.9 if beat % 2 == 0 else 0.8))
             for eighth in range(int(bpb * 2)):
                 hit(config.CLOSED_HAT, start + eighth * 0.5, level(start) * 0.55, length=0.1)
+    elif mode == "rock":  # kick and snare, eighth-note hats, and a tom fill into each peak
+        for bar in range(melody.bars):
+            start, strength = bar * bpb, level(bar * bpb)
+            fill = bar in build_up
+            for beat in range(int(bpb)):
+                if fill and beat == int(bpb) - 1:
+                    for i, tom in enumerate((config.HIGH_TOM, config.HIGH_TOM, config.MID_TOM, config.LOW_TOM)):
+                        hit(tom, start + beat + i * 0.25, strength * (0.8 + 0.07 * i), length=0.2)
+                    continue
+                hit(config.KICK if beat % 2 == 0 else config.SNARE, start + beat, strength * (0.95 if beat % 2 == 0 else 0.9))
+                if beat == 2 and bar % 2 == 1:
+                    hit(config.KICK, start + beat + 0.5, strength * 0.75)  # a push on the "and" of three
+                for half in (0.0, 0.5):
+                    hit(config.CLOSED_HAT, start + beat + half, strength * (0.6 if half == 0 else 0.45), length=0.1)
+    elif mode == "electronic":  # four on the floor, claps, off-beat open hats, sixteenth hats
+        for bar in range(melody.bars):
+            start, strength = bar * bpb, level(bar * bpb)
+            for beat in range(int(bpb)):
+                hit(config.KICK, start + beat, strength)
+                if beat % 2 == 1:
+                    hit(config.CLAP, start + beat, strength * 0.85)
+                hit(config.OPEN_HAT, start + beat + 0.5, strength * 0.5, length=0.2)
+                for sixteenth in (0.25, 0.75):
+                    hit(config.CLOSED_HAT, start + beat + sixteenth, strength * 0.35, length=0.1)
+            if bar in build_up:  # a snare build: sixteenths getting louder through the bar
+                steps = int(bpb * 4)
+                for i in range(steps):
+                    hit(config.SNARE, start + i * 0.25, 30 + 70 * i / (steps - 1), length=0.15)
+    elif mode == "light":  # brushes: a soft backbeat and a ride cymbal on every beat
+        for bar in range(melody.bars):
+            start, strength = bar * bpb, level(bar * bpb)
+            for beat in range(int(bpb)):
+                hit(config.RIDE, start + beat, strength * 0.5, length=0.5)
+                if beat % 2 == 1:
+                    hit(config.SNARE, start + beat, strength * 0.45)
 
     # Instruments the listener added, each only in its section.
     pans = dict(PANS)
@@ -465,7 +507,8 @@ def _figure(pattern: str, chord: ChordSpan, bpb: float, low: int, high: int):
     """The accompaniment figure over one chord: (beat, length, pitches, accent) events, in step with
     the bar (the pattern restarts on every downbeat)."""
     third, fifth = ((pc - chord.root) % 12 for pc in chord.pitch_classes[1:3])
-    register = {"ostinato": 0.2, "broken": 0.15, "alberti": 0.3, "arpeggio": 0.35, "comping": 0.4}[pattern]
+    register = {"ostinato": 0.2, "broken": 0.15, "alberti": 0.3, "arpeggio": 0.35, "comping": 0.4,
+                "power": 0.15, "arp16": 0.3}[pattern]
     root = _nearest_octave(chord.root, round(low + (high - low) * register), low, max(low + 11, high - 12))
     r, t, f, o = root, root + third, root + fifth, root + 12
     steps = {
@@ -474,6 +517,8 @@ def _figure(pattern: str, chord: ChordSpan, bpb: float, low: int, high: int):
         "arpeggio": (0.5, [[r], [t], [f], [o], [f], [t]], 0.5),  # up and down, over and over
         "broken": (1.0, [[r], [f], [t + 12 if t + 12 <= high else t], [f]], 0.95),  # a left hand, in quarters
         "comping": (None, [[t, f, o]], 0.35),  # strummed chords, off the beat
+        "power": (0.5, [[r, f, o]], 0.35),  # driving power chords in eighths
+        "arp16": (0.25, [[r], [t], [f], [o], [t + 12], [o], [f], [t]], 0.22),  # a fast synth arpeggio, up and down
     }
     step, cells, length = steps[pattern]
     end = chord.start_beats + chord.duration_beats
