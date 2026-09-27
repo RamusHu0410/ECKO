@@ -1,70 +1,36 @@
-# ECKO
-
-**Hum a tune, get a song, and share your results with everyone else. Everyone can be a composer!** 
-
-ECKO turns a short vocal melody into a fully
-arranged musical accompaniment, lets you reshape it with your voice, and
-share the results in a small social hub.
+## Inspiration
+Have you ever had a melody stuck in your head but had no idea how to turn it into music?
+Most people lose their chance of creating their own music, but now we provide a solution!
 
 ## What it does
+Introduce ECKO, where you can simply **hum a melody, autocomplete the accompaniment, and modify the music** with no composing experience required. 
+After completing your masterpiece, post it into the community discussion hub and explore your passion while discussing each other's piece!
 
-- **Hum to music** — record a hum (up to ~10s) in the browser. The backend
-  detects the notes and timing, then generates an accompaniment in your
-  chosen style (`piano`, `pop`, `cinematic`, `classical`).
-- **Talk to change it** — once you have a song, hold the mic and say things
-  like "make it faster" to remake it.
-- **Save & share** — sign in (via Auth0), save recordings, and post them to a
-  discussion hub with comments and likes.
+## How we built it
+Python + Typescript
+We have utilized sponsor materials, such as tiger data, gemini, elevenlab, auth0, and godaddy domain.
 
-## Architecture
+We have explored a completely new way of music generation; we transpose the complete composing rules and workflows in musician society into codes, which bring higher accuracy and more interesting harmonies while preserving the melody user hum.
 
-The project is split into a **Frontend** and a **backend**.
+Gemini is used, along with ElevenLabs, to assist the user in editing the music. It modifies the complex parameters of music generations and allows the user to do **ANY edits** to implement their ideas. (including but not limited to changing the mood, adding new instrument lines, and switching to starwar themes) 
 
-### Frontend (`Frontend/`)
-React 19 + Vite + TypeScript, styled with Tailwind and Motion. The UI is a
-turntable/vinyl metaphor: hold the microphone to hum, watch the disc "press"
-your record, then play it back. API helpers live in `api/` and talk to the
-backend endpoints.
+The community discussion hub is built with Auth0 and Tiger data, and our overall deployment uses free websites from the Godaddy domain.
 
-Run it:
-```bash
-cd Frontend
-npm install
-npm run dev
-```
+## Challenges we ran into
+When we are converting audio to data, besides the melody, lot of noise has been recorded and thus our generator treat it as a part of melody.
+We solve this by adjusting parameters of the audio converter and wrapping the melody with a restriction function to eliminate short noise notes.
 
-### Backend (`backend/`)
-Python (Flask, app factory in `src/app`) built with `uv`. It has two layers:
+## Accomplishments that we're proud of
+We had explored a completely new way of music generation, based on music theory rules. 
+This new method can create more harmonically pleasant sounds and takes less time to process. Allowing users to edit their music with no edit caps.
 
-1. **Accompaniment engine** (`accompanist/` workspace package) — converts a
-   melody (MIDI pitch + beats) into chords and renders MIDI/WAV using
-   `music21`, `pretty-midi`, `mido`, and FluidSynth. Exposed at
-   `/accompaniment/generate`.
-2. **App layer** — Auth0-protected `/api/*` endpoints backed by
-   TigerData/PostgreSQL (SQLAlchemy + Flask-Migrate) for users, recordings,
-   posts, comments, and likes. A `/talk` route handles voice-driven edits
-   (ElevenLabs + Google GenAI).
+## What we learned
+Current market demands on composition-style apps.
+Structure of sound waves and how does sounds become datas.
+Long-term maintainable programming
+Stress management and resolving conflict between teams
 
-Run it:
-```bash
-cd backend/src
-uv run flask --app app:create_app run --port 8000
-```
+## What's next for ECKO
+Expand the input choices such that the instrument besides the voice.
+Add an education section where users can study how our composition works and how to modify the complex parameters. 
 
-## API at a glance
-
-- `POST /accompaniment/generate` — melody in, MIDI/WAV/metadata out (no auth).
-- `GET /api/me` — current user (auto-created on first authenticated call).
-- `POST /api/recordings`, `GET /api/recordings/{id}/audio|midi` — save and
-  stream generated songs.
-- `POST /api/posts`, `/comments`, `/like` — the discussion hub.
-
-Full references live in `backend/README.md` and `backend/docs/`
-(`USER ACC.md`, `AUTH.md`, `DATABASE.md`, `API.md`).
-
-## Contributing rules
-
-- Always create a new branch when working on a new feature; merge only when it
-  works and integrates with the codebase.
-- Define a task for each commit, and only commit when that task is finished.
-- Test against the whole codebase before committing.
