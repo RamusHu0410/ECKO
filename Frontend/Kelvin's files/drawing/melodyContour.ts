@@ -8,6 +8,7 @@
  * that moment was. Where the melody moves to a new note, a mark sits on the line.
  *
  * Everything is in CSS pixels inside `width` × `height`; the canvas scales for retina itself.
+ * noteAt() finds the note under the pointer, so hovering the graph can name it.
  */
 import type { Contour, Note, SongNotes } from '../api/talk'
 
@@ -34,12 +35,22 @@ export interface PlayedBar {
   left: number
   right: number
   y: number
+  midi: number
+}
+
+/** A hummed note's stretch of the line: from where it starts to where it ends, and its pitch. */
+export interface SungSpan {
+  left: number
+  right: number
+  midi: number
 }
 
 export interface MelodyShapes {
   /** One entry per phrase: a run of sound with silence either side. */
   phrases: ContourPoint[][]
   marks: Mark[]
+  /** The hummed notes along the line, for naming the one under the pointer. */
+  sung: SungSpan[]
   played: PlayedBar[]
   /** Faint horizontal guides an octave apart — position only, never labelled. */
   octaves: number[]
@@ -92,7 +103,8 @@ export function melodyShapes(notes: SongNotes, bounds: Bounds): MelodyShapes | n
   return {
     phrases,
     marks: marks(notes.sung, phrases, x, y),
-    played: notes.played.map((n) => ({ left: x(n.start), right: x(n.start + n.duration), y: y(n.midi) })),
+    sung: notes.sung.map((n) => ({ left: x(n.start), right: x(n.start + n.duration), midi: n.midi })),
+    played: notes.played.map((n) => ({ left: x(n.start), right: x(n.start + n.duration), y: y(n.midi), midi: n.midi })),
     octaves: octaveLines(low, high, y),
     moved: hasMoved(notes),
   }
@@ -199,4 +211,70 @@ function octaveLines(low: number, high: number, y: (midi: number) => number): nu
 function hasMoved({ sung, played }: SongNotes): boolean {
   if (sung.length !== played.length) return played.length > 0
   return played.some((n, i) => Math.abs(n.midi - sung[i].midi) > 0.01 || Math.abs(n.start - sung[i].start) > 0.01)
+}
+
+/** How close the pointer must be to the amber line or a grey bar (CSS pixels) to count as on it. */
+const HOVER_REACH = 8
+const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
+
+/** A note under the pointer: whether it's hummed (amber) or played by the song (grey), where to show its name, and the name. */
+export interface HoveredNote {
+  kind: 'sung' | 'played'
+  x: number
+  y: number
+  name: string
+  /** For a hummed note: how far off the note it was sung, in words, if it was noticeably off. */
+  tuning: string | null
+}
+
+/** "C4" for MIDI 60, "F♯3" for 54: the nearest note to a (possibly fractional) MIDI pitch. */
+export function noteName(midi: number): string {
+  const nearest = Math.round(midi)
+  return `${NOTE_NAMES[((nearest % 12) + 12) % 12]}${Math.floor(nearest / 12) - 1}`
+}
+
+/**
+ * The note under the pointer (x, y in the graph's CSS pixels), or null. On the amber line it's the
+ * hummed note sung at that moment; on a grey bar, the note the song plays there. The nearer wins.
+ */
+export function noteAt(shapes: MelodyShapes, x: number, y: number): HoveredNote | null {
+  let found: HoveredNote | null = null
+  let nearest = HOVER_REACH
+  for (const phrase of shapes.phrases) {
+    for (const point of phrase) {
+      const away = Math.hypot(point.x - x, point.y - y)
+      if (away > nearest) continue
+      const note = shapes.sung.find((span) => point.x >= span.left && point.x <= span.right) ?? closestSpan(shapes.sung, point.x)
+      if (!note) continue
+      nearest = away
+      found = { kind: 'sung', x: point.x, y: point.y, name: noteName(note.midi), tuning: offTune(note.midi) }
+    }
+  }
+  for (const bar of shapes.played) {
+    const away = Math.abs(bar.y - y)
+    if (x < bar.left - HOVER_REACH || x > bar.right + HOVER_REACH || away > nearest) continue
+    nearest = away
+    found = { kind: 'played', x: Math.min(Math.max(x, bar.left), bar.right), y: bar.y, name: noteName(bar.midi), tuning: null }
+  }
+  return found
+}
+
+function closestSpan(spans: SungSpan[], x: number): SungSpan | null {
+  let best: SungSpan | null = null
+  let distance = Infinity
+  for (const span of spans) {
+    const away = x < span.left ? span.left - x : x > span.right ? x - span.right : 0
+    if (away < distance) {
+      distance = away
+      best = span
+    }
+  }
+  return best
+}
+
+/** "a little sharp" or "a little flat" when a hummed note was a fifth of a semitone or more off. */
+function offTune(midi: number): string | null {
+  const off = midi - Math.round(midi)
+  if (Math.abs(off) < 0.2) return null
+  return off > 0 ? 'a little sharp' : 'a little flat'
 }

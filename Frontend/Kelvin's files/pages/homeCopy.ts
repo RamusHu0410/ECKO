@@ -135,6 +135,11 @@ export const TOUR = {
       body: 'Press and hold the gnome on the record, say what you’d like, and let go: “make it faster”, “add violin behind the piano”, “turn it into jazz”. He answers out loud and changes the song. Say “undo” to go back.',
     },
     {
+      target: '[data-tour="versions"]',
+      title: 'Epic or pure hum',
+      body: 'Epic is the first song ECKO made from your hum, and it’s kept however you change things. Pure hum plays just the notes you hummed.',
+    },
+    {
       target: '[data-tour="gnome-picker"]',
       title: 'Pick your gnome',
       body: 'ECKO, grumpy Grandpa, Hype or Spooky: each has his own voice, his own way of talking and his own look.',

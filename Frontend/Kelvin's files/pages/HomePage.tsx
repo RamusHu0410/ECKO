@@ -10,6 +10,7 @@ import GlassButton from '../components/GlassButton/GlassButton'
 import GlassMessage from '../components/GlassMessage/GlassMessage'
 import SoundSlider from '../components/SoundSlider/SoundSlider'
 import GnomePicker from '../components/GnomePicker/GnomePicker'
+import VersionPicker from '../components/VersionPicker/VersionPicker'
 import Tour, { useTour } from '../components/Tour/Tour'
 import { useStudio } from '../hooks/useStudio'
 
@@ -38,7 +39,7 @@ import {
  */
 export default function HomePage() {
   const studio = useStudio()
-  const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings, sound } = studio
+  const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings, sound, versions } = studio
   const tour = useTour(hasSong) // plays by itself on a first visit, and when the first song is ready
   const { phase, micProblem, uploadFailure } = session
 
@@ -187,9 +188,10 @@ export default function HomePage() {
               <motion.aside
                 key="gnome-and-record"
                 className="mx-auto flex w-full max-w-sm flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:max-w-none xl:col-start-1 xl:pt-12"
-                aria-label="Gnome and record"
+                aria-label="Version, gnome and record"
                 {...appear}
               >
+                <VersionPicker playing={versions.playing} available={versions.available} onChoose={versions.choose} />
                 <div className="glass-surface glass-panel px-5 py-5" data-tour="gnome-picker">
                   <div className="glass-content flex flex-col gap-3">
                     <h2 className="text-xs font-semibold tracking-widest text-ink-muted uppercase">Your gnome</h2>

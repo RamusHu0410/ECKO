@@ -104,6 +104,10 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings,
     uploadFailure: upload.failure ?? song.failure,
     /** The song to play on the record: one version, or with Advanced on the three the sound slider blends (null until made). */
     songs: song.songs,
+    /** Which version plays (the first song, the hummed notes alone, or the latest edit), and choosing one. */
+    version: song.version,
+    versions: song.versions,
+    chooseVersion: song.choose,
     /** What the notes graph shows for the playing version (null until it arrives). */
     notes: song.notes,
     /** Makes the song again from the same hum with new settings; the old one plays until then. */

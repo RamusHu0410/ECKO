@@ -10,8 +10,11 @@ const BYTES_PER_SAMPLE = 2
 export async function encodeWav(recording: Blob): Promise<Blob> {
   const decoder = new OfflineAudioContext(1, 1, WAV_SAMPLE_RATE)
   const audio = await decoder.decodeAudioData(await recording.arrayBuffer())
-  const samples = audio.getChannelData(0) // mono: keep the first channel
+  return wavBlob(audio.getChannelData(0), audio.sampleRate) // mono: keep the first channel
+}
 
+/** Samples (-1..1) as an uncompressed 16-bit mono WAV file. */
+export function wavBlob(samples: Float32Array, sampleRate: number): Blob {
   const dataSize = samples.length * BYTES_PER_SAMPLE
   const view = new DataView(new ArrayBuffer(HEADER_BYTES + dataSize))
   const writeText = (offset: number, text: string) => {
@@ -26,8 +29,8 @@ export async function encodeWav(recording: Blob): Promise<Blob> {
   view.setUint32(16, 16, true)
   view.setUint16(20, 1, true)
   view.setUint16(22, 1, true)
-  view.setUint32(24, audio.sampleRate, true)
-  view.setUint32(28, audio.sampleRate * BYTES_PER_SAMPLE, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * BYTES_PER_SAMPLE, true)
   view.setUint16(32, BYTES_PER_SAMPLE, true)
   view.setUint16(34, 16, true)
   writeText(36, 'data')

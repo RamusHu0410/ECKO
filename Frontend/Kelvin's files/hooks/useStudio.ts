@@ -122,6 +122,12 @@ export function useStudio() {
     },
     /** Everything Reset puts back is already in the middle. */
     settingsAtMiddle: [settings.emotion, settings.speed, settings.pitch, mix].every((value) => value === MIDDLE_SETTING),
+    /** The Version buttons: the first (epic) song or the hummed notes alone; neither is lit while an edit plays. */
+    versions: {
+      playing: session.version,
+      available: session.versions,
+      choose: (wanted: 'epic' | 'hum') => void session.chooseVersion(wanted),
+    },
     /** The gnome on the sound box: press and hold it to talk. `id` is which character he is. */
     gnome: {
       id: gnomeId,
