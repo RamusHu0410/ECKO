@@ -31,11 +31,12 @@ export async function fakeBackend(page: Page) {
     calls.upload++
     return route.fulfill({ status: 201, json: { status: 'success', message: 'saved', filename: 'recording.wav', melody: [] } })
   })
-  await page.route('**/api/talk/song', (route) => {
+  // the song: /pipeline/song (the audio pipeline, what a new song uses) and /talk/song (Advanced's blend)
+  await page.route(/\/api\/(pipeline|talk)\/song$/, (route) => {
     calls.song++
     return route.fulfill({ status: 200, contentType: 'audio/wav', body: toneWav(4) })
   })
-  await page.route('**/api/talk/notes', (route) => {
+  await page.route(/\/api\/(pipeline|talk)\/notes$/, (route) => {
     // the pitch fader moves the song off the hum, which is what the graph draws in grey
     const asked = route.request().postDataJSON() as { settings?: { pitch?: number } } | null
     const shift = Math.round(((asked?.settings?.pitch ?? 0.5) - 0.5) * 24)

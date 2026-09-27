@@ -105,47 +105,75 @@ export const UPLOAD_HELP: Record<UploadFailureKind, { body: string; showDetail: 
   unexpected: { body: 'Something unexpected came back from the server.', showDetail: true },
 }
 
-/** The step-by-step guide that opens on a first visit (and from the intro's "How to use ECKO"). */
-export const TUTORIAL = {
-  title: 'How to use ECKO',
-  steps: [
+/**
+ * The guided tour: a glass note with an arrow at each part of the studio, one step at a time
+ * (components/Tour). `target` is what it points at: a CSS selector, mostly [data-tour] marks.
+ * Part one plays the first time the studio comes into view; part two the first time a song is ready.
+ */
+export const TOUR = {
+  beforeSong: [
     {
-      title: 'Hum a tune',
-      body: 'Scroll down to the studio. Hold the microphone, or hold the space bar, and hum for up to ten seconds; let go when you’re done. Hum clearly and close to the mic. Any tune in your head will do.',
+      target: '[data-tour="turntable"]',
+      title: 'Your record',
+      body: 'This is where your song is made. Your hum fills the glass disc, then it’s pressed into vinyl while ECKO turns it into a song.',
     },
     {
-      title: 'Watch it become a record',
-      body: 'Your hum fills the glass disc, then presses into vinyl while ECKO turns it into a song. That takes a few seconds.',
+      target: '[data-tour="mic"]',
+      title: 'Hum here',
+      body: 'Hold the microphone, or the space bar, and hum for up to ten seconds; let go when you’re done. Once your song is ready, I’ll show you around the rest.',
+    },
+  ],
+  afterSong: [
+    {
+      target: '[data-tour="turntable"]',
+      title: 'Your song is playing',
+      body: 'The record plays the song made from your hum. Tap the record to pause it, and tap again to play.',
     },
     {
-      title: 'Listen',
-      body: 'The record spins and plays your song. Tap the record to pause or play, Replay to hear it from the start, or Re-record to hum something new.',
-    },
-    {
-      title: 'Shape it with the faders',
-      body: 'Under the turntable, Your song has three faders: Emotion (moody to bright), Speed and Pitch. Move one, let go, and the song is made again to match.',
-    },
-    {
+      target: '[data-tour="turntable"]',
       title: 'Talk to the gnome',
-      body: 'Once there’s a song, a gnome stands on the turntable. Press and hold him, say what you’d like, and let go. Try “make it faster”, “add violin behind the piano” or “turn it into jazz”. He answers out loud and changes the song; say “undo” to go back. With a keyboard, tab to his button and hold Space or Enter.',
+      body: 'Press and hold the gnome on the record, say what you’d like, and let go: “make it faster”, “add violin behind the piano”, “turn it into jazz”. He answers out loud and changes the song. Say “undo” to go back.',
     },
     {
+      target: '[data-tour="gnome-picker"]',
       title: 'Pick your gnome',
-      body: 'Choose who you talk to: ECKO, grumpy Grandpa, Hype or Spooky. Each has his own voice, his own way of talking and his own look.',
+      body: 'ECKO, grumpy Grandpa, Hype or Spooky: each has his own voice, his own way of talking and his own look.',
     },
     {
+      target: '[data-tour="song-buttons"]',
+      title: 'Replay or start again',
+      body: 'Replay plays your song from the top. Re-record clears it so you can hum a new tune.',
+    },
+    {
+      target: '[data-tour="faders"]',
+      title: 'Shape your song',
+      body: 'Emotion runs from moody to bright; Speed and Pitch do what they say. Move one and let go, and the song is made again to match.',
+    },
+    {
+      target: '[data-tour="advanced"]',
       title: 'Blend the sound',
-      body: 'Open Advanced at the bottom of Your song and slide the Sound bar from classical piano, through synth, to creepy. Let go anywhere: in between, the two sounds blend.',
+      body: 'Open Advanced and slide Sound from classical piano, through synth, to creepy. Let go anywhere: in between, the two sounds blend.',
     },
     {
-      title: 'Keep your songs',
-      body: 'Every song you make is kept on your Profile, at the top right. Visit Community to hear what others have made.',
+      target: '[data-tour="reset"]',
+      title: 'Start fresh',
+      body: 'Reset puts Emotion, Speed, Pitch and Sound back in the middle.',
+    },
+    {
+      target: '[data-tour="graph"]',
+      title: 'See your tune',
+      body: 'Amber is the tune as you hummed it; grey is what the song plays.',
+    },
+    {
+      target: 'nav[aria-label="Pages"]',
+      title: 'Keep and share',
+      body: 'Every song you make is kept on your Profile. Community is where people share theirs.',
     },
   ],
   back: 'Back',
   next: 'Next',
+  done: 'Done',
   skip: 'Skip',
-  finish: 'Start humming',
   reopen: 'How to use ECKO',
 }
 

@@ -10,7 +10,7 @@ import GlassButton from '../components/GlassButton/GlassButton'
 import GlassMessage from '../components/GlassMessage/GlassMessage'
 import SoundSlider from '../components/SoundSlider/SoundSlider'
 import GnomePicker from '../components/GnomePicker/GnomePicker'
-import Tutorial, { useTutorial } from '../components/Tutorial/Tutorial'
+import Tour, { useTour } from '../components/Tour/Tour'
 import { useStudio } from '../hooks/useStudio'
 
 /** The 3D turntable loads on its own (three.js is large), so the intro shows at once. */
@@ -38,183 +38,207 @@ import {
  */
 export default function HomePage() {
   const studio = useStudio()
-  const guide = useTutorial() // opens by itself on a first visit
   const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings, sound } = studio
+  const tour = useTour(hasSong) // plays by itself on a first visit, and when the first song is ready
   const { phase, micProblem, uploadFailure } = session
 
   return (
     <main>
-      <Intro reducedMotion={reducedMotion} onShowGuide={guide.show} />
-      <AnimatePresence>{guide.open && <Tutorial key="guide" onClose={guide.close} reducedMotion={reducedMotion} />}</AnimatePresence>
+      <Intro reducedMotion={reducedMotion} onShowGuide={tour.show} />
+      {tour.steps && <Tour key={tour.steps.map((step) => step.title).join()} steps={tour.steps} onClose={tour.close} />}
 
       {/* the studio, where the recording happens; the intro's links land here (and focus it, so the
-          spacebar records straight away) */}
-      <section id="studio" tabIndex={-1} aria-label="Studio" className="flex min-h-dvh flex-col items-center px-5 py-10 outline-none lg:px-12">
-        {CSS_TURNTABLE ? (
-          <Turntable
-            platter={{
-              rotation: session.rotation,
-              canvas: session.canvas,
-              reducedMotion,
-              isVinyl: session.isVinyl,
-              tappable: phase === 'ready',
-              label: discLabel(phase, session.paused),
-              onTap: session.tap,
-            }}
-            tonearm={{ onRecord: hasSong, reducedMotion }}
-            topDown={hasSong}
-          />
-        ) : (
-          <Suspense fallback={<div className="tt3d" />}>
-            <Turntable3D
-              rotation={session.rotation}
-              disc={{ ...session.canvas, reducedMotion }}
-              isVinyl={session.isVinyl}
-              tappable={phase === 'ready'}
-              label={discLabel(phase, session.paused)}
-              onTap={session.tap}
-              onRecord={hasSong}
-              reducedMotion={reducedMotion}
-              humming={phase === 'recording'}
-              gnome={{
-                present: gnome.present,
-                enabled: gnome.enabled,
-                holding: gnome.holding,
-                phase: gnome.phase,
-                onPress: gnome.press,
-                onRelease: gnome.release,
-                look: gnome.look,
-              }}
-            />
-          </Suspense>
-        )}
+          spacebar records straight away). Narrow screens stack it all; wide ones set the controls
+          beside the turntable so nothing needs scrolling to reach: from 1024px the gnome, the record's
+          buttons and Your song share a column on the right, from 1280px the gnome moves to the left.
+          Before there's a song the turntable spans the whole width. */}
+      <section id="studio" tabIndex={-1} aria-label="Studio" className="min-h-dvh px-5 py-10 outline-none lg:px-10">
+        <div className="mx-auto grid w-full max-w-[88rem] grid-cols-1 items-start gap-y-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-8 xl:grid-cols-[15rem_minmax(0,1fr)_20rem]">
+          {/* middle: the turntable, its status line, and the mic */}
+          <div
+            className={`flex min-w-0 flex-col items-center ${hasSong ? 'lg:col-start-1 lg:row-span-2 lg:row-start-1 xl:col-start-2 xl:row-span-1' : 'lg:col-span-full'}`}
+            data-tour="turntable-area"
+          >
+            <div className="w-full" data-tour="turntable">
+              {CSS_TURNTABLE ? (
+                <Turntable
+                  platter={{
+                    rotation: session.rotation,
+                    canvas: session.canvas,
+                    reducedMotion,
+                    isVinyl: session.isVinyl,
+                    tappable: phase === 'ready',
+                    label: discLabel(phase, session.paused),
+                    onTap: session.tap,
+                  }}
+                  tonearm={{ onRecord: hasSong, reducedMotion }}
+                  topDown={hasSong}
+                />
+              ) : (
+                <Suspense fallback={<div className="tt3d" />}>
+                  <Turntable3D
+                    rotation={session.rotation}
+                    disc={{ ...session.canvas, reducedMotion }}
+                    isVinyl={session.isVinyl}
+                    tappable={phase === 'ready'}
+                    label={discLabel(phase, session.paused)}
+                    onTap={session.tap}
+                    onRecord={hasSong}
+                    reducedMotion={reducedMotion}
+                    humming={phase === 'recording'}
+                    gnome={{
+                      present: gnome.present,
+                      enabled: gnome.enabled,
+                      holding: gnome.holding,
+                      phase: gnome.phase,
+                      onPress: gnome.press,
+                      onRelease: gnome.release,
+                      look: gnome.look,
+                    }}
+                  />
+                </Suspense>
+              )}
+            </div>
 
-        {/* status under the turntable: the pressing pill fits without moving anything; a message
-            (which needs the room for its buttons) pushes the controls down while it shows */}
-        <div className="flex min-h-12 w-full items-start justify-center">
-          <AnimatePresence mode="wait">
-            {phase === 'waiting' && (
-              <motion.p key="waiting" className="glass-surface glass-control h-fit px-5 py-2 text-sm text-ink" {...appear}>
-                <span className="glass-content flex items-center gap-2">
-                  <span className="size-1.5 rounded-full bg-amber motion-safe:animate-pulse" />
-                  Pressing your record…
-                </span>
-              </motion.p>
-            )}
-            {phase === 'failed' && uploadFailure && (
-              <GlassMessage
-                key="upload-failed"
-                title={UPLOAD_FAILED_TITLE}
-                body={uploadFailure.reason ?? UPLOAD_HELP[uploadFailure.kind].body}
-                detail={!uploadFailure.reason && UPLOAD_HELP[uploadFailure.kind].showDetail ? uploadFailure.message : undefined}
-                actions={
-                  <>
-                    <GlassButton onClick={session.retry}>Try again</GlassButton>
-                    <GlassButton onClick={session.reset}>Re-record</GlassButton>
-                  </>
+            {/* status under the turntable: the pressing pill fits without moving anything; a message
+                (which needs the room for its buttons) pushes the mic down while it shows */}
+            <div className="flex min-h-12 w-full items-start justify-center">
+              <AnimatePresence mode="wait">
+                {phase === 'waiting' && (
+                  <motion.p key="waiting" className="glass-surface glass-control h-fit px-5 py-2 text-sm text-ink" {...appear}>
+                    <span className="glass-content flex items-center gap-2">
+                      <span className="size-1.5 rounded-full bg-amber motion-safe:animate-pulse" />
+                      Pressing your record…
+                    </span>
+                  </motion.p>
+                )}
+                {phase === 'failed' && uploadFailure && (
+                  <GlassMessage
+                    key="upload-failed"
+                    title={UPLOAD_FAILED_TITLE}
+                    body={uploadFailure.reason ?? UPLOAD_HELP[uploadFailure.kind].body}
+                    detail={!uploadFailure.reason && UPLOAD_HELP[uploadFailure.kind].showDetail ? uploadFailure.message : undefined}
+                    actions={
+                      <>
+                        <GlassButton onClick={session.retry}>Try again</GlassButton>
+                        <GlassButton onClick={session.reset}>Re-record</GlassButton>
+                      </>
+                    }
+                  />
+                )}
+                {phase === 'mic-error' && micProblem && (
+                  <GlassMessage
+                    key="mic-help"
+                    title={MIC_HELP[micProblem].title}
+                    body={MIC_HELP[micProblem].body}
+                    actions={<GlassButton onClick={session.reset}>Try again</GlassButton>}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* the mic with its caption; the caption (a talk reply) wraps within the mic's width */}
+            <div className="flex w-full max-w-72 flex-col items-center gap-3" data-tour="mic">
+              <Microphone
+                pointerHandlers={mic.pointerHandlers}
+                recording={mic.recording}
+                enabled={mic.enabled}
+                label={MIC_LABEL}
+                caption={
+                  talking
+                    ? talkCaption(talk.phase, talk.reply, talk.problem, talk.secondsLeft)
+                    : micCaption(phase, mic.holding, session.secondsLeft, talk.busy)
                 }
-              />
-            )}
-            {phase === 'mic-error' && micProblem && (
-              <GlassMessage
-                key="mic-help"
-                title={MIC_HELP[micProblem].title}
-                body={MIC_HELP[micProblem].body}
-                actions={<GlassButton onClick={session.reset}>Try again</GlassButton>}
-              />
-            )}
-          </AnimatePresence>
-        </div>
+              >
+                <NoteStream active={phase === 'recording'} level={session.canvas.liveLevel} />
+              </Microphone>
+              {/* the gnome is in the 3D scene, which screen readers and the keyboard skip: this is his
+                  button for them, and it shows only while it has focus */}
+              {hasSong && (
+                <button
+                  type="button"
+                  className="glass-surface glass-control sr-only px-5 py-2 text-sm text-ink focus-visible:not-sr-only"
+                  aria-label={GNOME_LABEL}
+                  aria-disabled={!gnome.enabled}
+                  {...gnome.keyHandlers}
+                >
+                  <span className="glass-content">{gnome.holding ? 'Listening…' : 'Hold to talk'}</span>
+                </button>
+              )}
+            </div>
 
-        {/* the mic with its caption, and the song's buttons. A grid, so a long caption (a talk reply)
-            wraps inside the middle column instead of spreading over the buttons and taking their
-            clicks. Narrow screens put the mic on its own row. */}
-        <div className="grid w-full max-w-2xl grid-cols-2 items-start gap-x-5 gap-y-4 sm:grid-cols-[1fr_minmax(0,18rem)_1fr]">
-          <div className="col-span-2 flex justify-center sm:col-span-1 sm:col-start-2 sm:row-start-1">
-            <Microphone
-              pointerHandlers={mic.pointerHandlers}
-              recording={mic.recording}
-              enabled={mic.enabled}
-              label={MIC_LABEL}
-              caption={
-                talking
-                  ? talkCaption(talk.phase, talk.reply, talk.problem, talk.secondsLeft)
-                  : micCaption(phase, mic.holding, session.secondsLeft, talk.busy)
-              }
-            >
-              <NoteStream active={phase === 'recording'} level={session.canvas.liveLevel} />
-            </Microphone>
+            {/* what ECKO understood the last command to do, e.g. "✓ Keep piano" and "+ Add violin — soft, in the background" */}
+            <AnimatePresence>
+              {talking && talk.understood.length > 0 && (
+                <motion.ul key="understood" className="glass-surface glass-message mt-3 px-5 py-3 text-xs leading-relaxed text-ink" {...appear}>
+                  {talk.understood.map((line) => (
+                    <li key={line} className="glass-content">
+                      {line}
+                    </li>
+                  ))}
+                </motion.ul>
+              )}
+            </AnimatePresence>
           </div>
-          {/* the gnome is in the 3D scene, which screen readers and the keyboard skip: this is his
-              button for them, and it shows only while it has focus */}
-          {hasSong && (
-            <button
-              type="button"
-              className="glass-surface glass-control sr-only px-5 py-2 text-sm text-ink focus-visible:not-sr-only justify-self-end sm:col-start-1 sm:row-start-1"
-              aria-label={GNOME_LABEL}
-              aria-disabled={!gnome.enabled}
-              {...gnome.keyHandlers}
-            >
-              <span className="glass-content">{gnome.holding ? 'Listening…' : 'Hold to talk'}</span>
-            </button>
-          )}
+
+          {/* who answers when you talk, and the record's own buttons */}
           <AnimatePresence>
             {hasSong && (
-              <motion.div
-                key="song-buttons"
-                className="flex flex-col items-start gap-3 justify-self-start sm:col-start-3 sm:row-start-1 sm:pt-[calc(var(--mic-size)*0.12)]"
+              <motion.aside
+                key="gnome-and-record"
+                className="mx-auto flex w-full max-w-sm flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:max-w-none xl:col-start-1 xl:pt-12"
+                aria-label="Gnome and record"
                 {...appear}
               >
-                <GlassButton onClick={studio.replay}>Replay</GlassButton>
-                <GlassButton onClick={session.reset}>Re-record</GlassButton>
-              </motion.div>
+                <div className="glass-surface glass-panel px-5 py-5" data-tour="gnome-picker">
+                  <div className="glass-content flex flex-col gap-3">
+                    <h2 className="text-xs font-semibold tracking-widest text-ink-muted uppercase">Your gnome</h2>
+                    <GnomePicker value={gnome.id} disabled={talk.busy} onChange={gnome.choose} compact />
+                  </div>
+                </div>
+                <div className="flex justify-center gap-3" data-tour="song-buttons">
+                  <GlassButton onClick={studio.replay}>Replay</GlassButton>
+                  <GlassButton onClick={session.reset}>Re-record</GlassButton>
+                </div>
+              </motion.aside>
             )}
           </AnimatePresence>
+
+          {/* Your song: the faders, Advanced (the sound blend) and Reset */}
+          <AnimatePresence>
+            {hasSong && (
+              <motion.aside
+                key="your-song"
+                className="mx-auto w-full max-w-sm lg:col-start-2 lg:row-start-2 lg:max-w-none xl:col-start-3 xl:row-start-1 xl:pt-12"
+                aria-label="Your song"
+                {...appear}
+              >
+                <AdjustmentsPanel
+                  settings={settings}
+                  onChange={studio.adjust}
+                  advanced={{
+                    open: sound.advanced,
+                    onToggle: sound.toggleAdvanced,
+                    // the sound slider, blending the song anywhere from classical to creepy
+                    children: <SoundSlider value={sound.mix} disabled={!sound.blending} onChange={sound.setMix} />,
+                  }}
+                  reset={{ onReset: studio.resetSettings, disabled: studio.settingsAtMiddle }}
+                />
+              </motion.aside>
+            )}
+          </AnimatePresence>
+
+          {/* underneath: the tune as hummed and as played */}
+          {hasSong && session.notes && (
+            <div className="flex justify-center lg:col-span-2 xl:col-span-3" data-tour="graph">
+              <NotesGraph notes={session.notes} />
+            </div>
+          )}
         </div>
-
-        {/* which gnome answers: each has his own look, voice and personality */}
-        <AnimatePresence>
-          {hasSong && (
-            <motion.div key="gnome-picker" className="mt-4" {...appear}>
-              <GnomePicker value={gnome.id} disabled={talk.busy} onChange={gnome.choose} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* what ECKO understood the last command to do, e.g. "✓ Keep piano" and "+ Add violin — soft, in the background" */}
-        <AnimatePresence>
-          {talking && talk.understood.length > 0 && (
-            <motion.ul key="understood" className="glass-surface glass-message mt-3 px-5 py-3 text-xs leading-relaxed text-ink" {...appear}>
-              {talk.understood.map((line) => (
-                <li key={line} className="glass-content">
-                  {line}
-                </li>
-              ))}
-            </motion.ul>
-          )}
-        </AnimatePresence>
 
         <p className="sr-only" aria-live="polite">
           {(talking && talk.reply) || ANNOUNCEMENTS[phase] || ''}
         </p>
-
-        <AnimatePresence>
-          {hasSong && (
-            <motion.div key="adjustments" className="mt-8 flex w-full flex-col items-center gap-6" {...appear}>
-              <AdjustmentsPanel
-                settings={settings}
-                onChange={studio.adjust}
-                advanced={{
-                  open: sound.advanced,
-                  onToggle: sound.toggleAdvanced,
-                  // the sound slider, blending the song anywhere from classical to creepy
-                  children: <SoundSlider value={sound.mix} disabled={!sound.blending} onChange={sound.setMix} />,
-                }}
-              />
-              {session.notes && <NotesGraph notes={session.notes} />}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </section>
     </main>
   )
