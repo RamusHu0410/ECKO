@@ -232,6 +232,45 @@
     margin-top: -10px;
   }
 
+  /* The guided tour's note (components/Tour) points at what it explains with a small glass triangle
+     on the edge facing it; data-side says which side of the target the note sits on */
+  .tour-arrow {
+    position: absolute;
+    z-index: 3;
+    width: 22px;
+    height: 12px;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.92);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .tour-arrow[data-side="below"] {
+    transform: translate(-50%, -100%);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+
+  .tour-arrow[data-side="above"] {
+    transform: translate(-50%, 0);
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+  }
+
+  .tour-arrow[data-side="right"],
+  .tour-arrow[data-side="left"] {
+    width: 12px;
+    height: 22px;
+  }
+
+  .tour-arrow[data-side="right"] {
+    transform: translate(-100%, -50%);
+    clip-path: polygon(0 50%, 100% 0, 100% 100%);
+  }
+
+  .tour-arrow[data-side="left"] {
+    transform: translate(0, -50%);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+  }
+
   .glass-fader::-moz-range-thumb {
     width: 30px;
     height: 30px;

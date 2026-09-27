@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import DiscCanvas from '../Turntable/DiscCanvas'
-import { INTRO, TUTORIAL } from '../../pages/homeCopy'
+import { INTRO, TOUR } from '../../pages/homeCopy'
 
 /** A gentle swell for the melody pressed into the intro record, the shape a hum leaves. */
 const SAMPLE_LEVELS = Array.from({ length: 200 }, (_, i) => 0.45 + 0.35 * Math.sin(i / 6) * Math.sin(i / 29))
@@ -8,7 +8,7 @@ const SAMPLE_LEVELS = Array.from({ length: 200 }, (_, i) => 0.45 + 0.35 * Math.s
 /**
  * What ECKO is, at a glance: the promise, the three steps set like the track list on a record
  * sleeve, and a finished ECKO record turning slowly beside them. Both links lead down to the studio;
- * "How to use ECKO" opens the step-by-step guide.
+ * "How to use ECKO" starts the guided tour of the studio.
  */
 export default function Intro({ reducedMotion, onShowGuide }: { reducedMotion: boolean; onShowGuide: () => void }) {
   return (
@@ -43,7 +43,7 @@ export default function Intro({ reducedMotion, onShowGuide }: { reducedMotion: b
             <span className="glass-content">{INTRO.start}</span>
           </a>
           <button type="button" onClick={onShowGuide} className="cursor-pointer px-2 py-2.5 font-medium text-ink underline-offset-4 hover:underline">
-            {TUTORIAL.reopen}
+            {TOUR.reopen}
           </button>
         </div>
       </div>

@@ -11,6 +11,9 @@ import type { SongSettings } from './useSongSettings'
 import { blendVolumes, nearestVersion } from '../audio/blend'
 import { GNOMES, type GnomeId } from '../data/gnomes'
 
+/** Where every fader starts, and where Reset puts them back: the middle. */
+const MIDDLE_SETTING = 0.5
+
 /** The mic can start a fresh hum from these; one that already has a song is replaced by the new hum. */
 const HUM_FROM: ReadonlySet<SessionPhase> = new Set(['idle', 'mic-error', 'ready', 'failed'])
 
@@ -112,6 +115,13 @@ export function useStudio() {
       setMix,
       blending,
     },
+    /** Reset: Emotion, Speed and Pitch back to the middle, and the Sound blend back to synth. */
+    resetSettings: () => {
+      adjust({ emotion: MIDDLE_SETTING, speed: MIDDLE_SETTING, pitch: MIDDLE_SETTING })
+      setMix(MIDDLE_SETTING)
+    },
+    /** Everything Reset puts back is already in the middle. */
+    settingsAtMiddle: [settings.emotion, settings.speed, settings.pitch, mix].every((value) => value === MIDDLE_SETTING),
     /** The gnome on the sound box: press and hold it to talk. `id` is which character he is. */
     gnome: {
       id: gnomeId,
