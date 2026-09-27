@@ -20,6 +20,11 @@ DEFAULT_VELOCITY = 100    # accompaniment base — loud, but under the melody
 # so it doesn't blend in where a chord tone shares its pitch. It also plays louder.
 MELODY_PROGRAM = 80       # Lead 1 (square)
 MELODY_VELOCITY = 127     # loudest — the melody line leads
+# Velocity is already at its 127 ceiling, so the extra loudness comes from the
+# melody track's MIDI channel volume (CC7). The accompaniment keeps the default
+# channel volume of 100, so 110 makes the melody 10% louder.
+ACCOMP_CHANNEL_VOLUME = 100
+MELODY_CHANNEL_VOLUME = 110
 ACCOMP_VELOCITY_SCALE = 1.0
 # Force every accompaniment note to this fixed velocity so per-style dynamic
 # reductions stay consistent, while sitting below the melody. Set to None to
@@ -28,7 +33,10 @@ ACCOMP_FIXED_VELOCITY = 100
 # When a melody is provided, keep every chord tone strictly below the
 # melody's lowest note within that bar (see `_pitches_below_melody`), so the
 # accompaniment never sits in or above the melody's register and mask it.
-MIN_ACCOMPANIMENT_PITCH = 24  # never drop chords below this (C1) chasing separation
+MIN_ACCOMPANIMENT_PITCH = 45  # never drop chords below this (A2) chasing separation
+# Hard floor for any single accompaniment note (bass notes included). Anything
+# lower is raised by octaves, so the line never sinks into a muddy rumble.
+LOWEST_ACCOMPANIMENT_NOTE = 36  # C2
 # A note that runs right up to the exact instant the next note attacks gets
 # cut off mid-decay by that retrigger, instead of ringing out — it never
 # audibly "resonates". Shaving a small silent gap off the end gives the
@@ -186,7 +194,7 @@ def render_accompaniment(
                 acc.notes.append(
                     pretty_midi.Note(
                         velocity=scaled_vel,
-                        pitch=int(pitch),
+                        pitch=_not_too_low(int(pitch)),
                         start=note_start,
                         end=note_end,
                     )
@@ -198,11 +206,15 @@ def render_accompaniment(
             else:  # "broken"
                 _add_broken(acc, pitches, start_beat, dur_beats, spb, velocity)
 
+    for note in acc.notes:  # block/broken paths too
+        note.pitch = _not_too_low(note.pitch)
+    _set_channel_volume(acc, ACCOMP_CHANNEL_VOLUME)
     pm.instruments.append(acc)
 
     if melody_notes:
         # Melody on its own track, played loud so it clearly leads.
         mel = pretty_midi.Instrument(program=melody_program)
+        _set_channel_volume(mel, MELODY_CHANNEL_VOLUME)
         for n in melody_notes:
             start = n["start"] * spb
             end = start + n["duration"] * spb
@@ -218,6 +230,20 @@ def render_accompaniment(
 
     pm.write(path)
     return path
+
+
+def _not_too_low(pitch: int) -> int:
+    """Raise a note by octaves until it's at or above LOWEST_ACCOMPANIMENT_NOTE."""
+    while pitch < LOWEST_ACCOMPANIMENT_NOTE:
+        pitch += 12
+    return pitch
+
+
+def _set_channel_volume(inst, volume: int) -> None:
+    """MIDI channel volume (CC7) at the start of the track."""
+    inst.control_changes.append(
+        pretty_midi.ControlChange(number=7, value=int(volume), time=0.0)
+    )
 
 
 def _add_block(inst, pitches, start_beat, dur_beats, spb, velocity):
