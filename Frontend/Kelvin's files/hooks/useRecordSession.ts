@@ -37,12 +37,12 @@ const PLATTER_SPEED: Record<SessionPhase, PlatterSpeed> = {
 }
 
 /** One hum from start to finish: record → press into vinyl → send to the backend → make its song → spin. */
-export function useRecordSession(reducedMotion: boolean, settings: SongSettings) {
+export function useRecordSession(reducedMotion: boolean, settings: SongSettings, advanced: boolean) {
   const pressDurationMs = useMemo(() => readNumberToken('--duration-press-vinyl'), [])
   const recorder = useRecorder(pressDurationMs)
   const mic = useMicLevel(recorder.stream)
   const upload = useHumUpload()
-  const song = useSong(settings)
+  const song = useSong(settings, advanced)
   const phase = sessionPhase(recorder.phase, upload.status, song.status)
   const turntable = useTurntable(PLATTER_SPEED[phase], reducedMotion)
 
@@ -57,7 +57,7 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
   // each saved hum gets its song made right away, with the settings as they are
   const { make } = song
   useEffect(() => {
-    if (upload.reply) void make(upload.reply.filename)
+    if (upload.reply) void make(upload.reply)
   }, [upload.reply, make])
 
   const { reset: resetSong } = song
@@ -102,8 +102,8 @@ export function useRecordSession(reducedMotion: boolean, settings: SongSettings)
     paused: turntable.paused,
     micProblem: recorder.problem,
     uploadFailure: upload.failure ?? song.failure,
-    /** The song to play on the record (null until it's made). */
-    song: song.song,
+    /** The song to play on the record: one version, or with Advanced on the three the sound slider blends (null until made). */
+    songs: song.songs,
     /** What the notes graph shows for the playing version (null until it arrives). */
     notes: song.notes,
     /** Makes the song again from the same hum with new settings; the old one plays until then. */

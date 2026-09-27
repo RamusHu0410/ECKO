@@ -70,7 +70,7 @@ def test_bad_voice_requests_get_a_clear_message(talk_client):
 
 
 def test_voice_failure_is_a_503_not_a_crash(app):
-    def no_key(_text):
+    def no_key(_text, _voice_id=None):
         raise RuntimeError("ELEVENLABS_API_KEY is missing")
 
     app.extensions["talk"] = fake_services(speak=no_key)

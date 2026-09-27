@@ -28,6 +28,17 @@ export interface GnomeProps {
   onRelease: () => void
   onHover: (over: boolean) => void
   reducedMotion: boolean
+  /** A character's own colours and accessory; without one he's the green gnome. */
+  look?: GnomeLook
+}
+
+/** How a gnome character looks: colours for his coat, trousers, hat and beard, and one accessory. */
+export interface GnomeLook {
+  coat: string
+  trousers: string
+  hat: string
+  beard: string
+  accessory: 'spectacles' | 'sunglasses' | 'lantern'
 }
 
 /**
@@ -36,7 +47,7 @@ export interface GnomeProps {
  * Press and hold him to talk: he stops, turns to you and listens (his hat glows) until you let go,
  * then thinks, and bobs along while ECKO answers.
  */
-export default function Gnome3D({ present, enabled, holding, phase, onPress, onRelease, onHover, reducedMotion }: GnomeProps) {
+export default function Gnome3D({ present, enabled, holding, phase, onPress, onRelease, onHover, reducedMotion, look }: GnomeProps) {
   const { camera } = useThree()
   const colors = useMemo(
     () => ({
@@ -49,8 +60,9 @@ export default function Gnome3D({ present, enabled, holding, phase, onPress, onR
       beard: readToken('--gnome-beard'),
       boot: readToken('--gnome-boot'),
       buckle: readToken('--gnome-buckle'),
+      ...(look && { green: look.coat, dark: look.trousers, deep: look.hat, beard: look.beard }),
     }),
-    [],
+    [look],
   )
   // his coat: a bell that flares a little at the hem, closed at the neck
   const coat = useMemo(
@@ -285,6 +297,13 @@ export default function Gnome3D({ present, enabled, holding, phase, onPress, onR
               <sphereGeometry args={[0.0026, 16, 12]} />
               <meshPhysicalMaterial color={colors.skin} {...glaze} />
             </mesh>
+            {/* a lantern, glowing, in his right hand */}
+            {look?.accessory === 'lantern' && x < 0 && (
+              <mesh position={[0, -0.0168, 0.0035]}>
+                <sphereGeometry args={[0.0036, 16, 12]} />
+                <meshStandardMaterial color="#f6d27a" emissive="#f2b640" emissiveIntensity={2.2} />
+              </mesh>
+            )}
           </group>
         ))}
 
@@ -308,6 +327,20 @@ export default function Gnome3D({ present, enabled, holding, phase, onPress, onR
               <meshStandardMaterial color="#1d1b19" roughness={0.2} />
             </mesh>
           ))}
+          {/* round gold spectacles, or dark sunglasses, low on his nose so the hat's brim doesn't hide them */}
+          {look?.accessory === 'spectacles' &&
+            [-1, 1].map((side) => (
+              <mesh key={side} position={[side * 0.003, 0.0068, 0.0084]}>
+                <torusGeometry args={[0.0019, 0.00045, 8, 24]} />
+                <meshStandardMaterial color="#c8a44a" metalness={0.9} roughness={0.25} />
+              </mesh>
+            ))}
+          {look?.accessory === 'sunglasses' && (
+            <mesh position={[0, 0.0068, 0.0086]}>
+              <boxGeometry args={[0.0115, 0.003, 0.001]} />
+              <meshStandardMaterial color="#111111" metalness={0.4} roughness={0.15} />
+            </mesh>
+          )}
           <mesh position-y={0.0093} rotation-x={Math.PI / 2}>
             <torusGeometry args={[0.0086, 0.0014, 10, 36]} />
             <meshPhysicalMaterial color={colors.deep} {...glaze} />

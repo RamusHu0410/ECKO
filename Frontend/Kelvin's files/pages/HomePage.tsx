@@ -8,6 +8,8 @@ import NotesGraph from '../components/NotesGraph/NotesGraph'
 import Intro from '../components/Intro/Intro'
 import GlassButton from '../components/GlassButton/GlassButton'
 import GlassMessage from '../components/GlassMessage/GlassMessage'
+import SoundSlider from '../components/SoundSlider/SoundSlider'
+import GnomePicker from '../components/GnomePicker/GnomePicker'
 import { useStudio } from '../hooks/useStudio'
 
 /** The 3D turntable loads on its own (three.js is large), so the intro shows at once. */
@@ -35,7 +37,7 @@ import {
  */
 export default function HomePage() {
   const studio = useStudio()
-  const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings } = studio
+  const { session, talk, mic, gnome, talking, hasSong, reducedMotion, settings, sound } = studio
   const { phase, micProblem, uploadFailure } = session
 
   return (
@@ -78,6 +80,7 @@ export default function HomePage() {
                 phase: gnome.phase,
                 onPress: gnome.press,
                 onRelease: gnome.release,
+                look: gnome.look,
               }}
             />
           </Suspense>
@@ -161,10 +164,31 @@ export default function HomePage() {
               >
                 <GlassButton onClick={studio.replay}>Replay</GlassButton>
                 <GlassButton onClick={session.reset}>Re-record</GlassButton>
+                <GlassButton aria-pressed={sound.advanced} onClick={sound.toggleAdvanced}>
+                  {sound.advanced ? 'Hide advanced' : 'Advanced'}
+                </GlassButton>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
+
+        {/* which gnome answers: each has his own look, voice and personality */}
+        <AnimatePresence>
+          {hasSong && (
+            <motion.div key="gnome-picker" className="mt-4" {...appear}>
+              <GnomePicker value={gnome.id} disabled={talk.busy} onChange={gnome.choose} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Advanced: the sound slider, blending the song anywhere from classical to creepy */}
+        <AnimatePresence>
+          {hasSong && sound.advanced && (
+            <motion.div key="sound-slider" className="mt-4 flex w-full justify-center" {...appear}>
+              <SoundSlider value={sound.mix} disabled={!sound.blending} onChange={sound.setMix} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* what ECKO understood the last command to do, e.g. "✓ Keep piano" and "+ Add violin — soft, in the background" */}
         <AnimatePresence>

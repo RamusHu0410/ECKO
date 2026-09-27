@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { MAX_RECORDING_MS } from './useRecorder'
 import { sendTalk, speechUrl } from '../api/talk'
 import type { SongSettings } from './useSongSettings'
+import type { GnomeId } from '../data/gnomes'
 
 /**
  * listening: recording what the person says · thinking: the backend is working it out ·
@@ -21,6 +22,8 @@ interface TalkOptions {
   update: (changes: Partial<SongSettings>) => void
   /** Makes the song again from the same hum with these settings. */
   remakeSong: (settings: SongSettings) => Promise<void>
+  /** Which gnome answers: his voice and personality. */
+  gnome: GnomeId
 }
 
 const SHORTEST_TALK_MS = 300
@@ -30,15 +33,15 @@ const SHORTEST_TALK_MS = 300
  * hears it and answers out loud; the faders move and the song is remade from the same hum.
  * Saying "undo" steps back, because every change keeps the version before it.
  */
-export function useTalk({ settings, update, remakeSong }: TalkOptions) {
+export function useTalk({ settings, update, remakeSong, gnome }: TalkOptions) {
   const [phase, setPhase] = useState<TalkPhase>('idle')
   const [reply, setReply] = useState('')
   const [understood, setUnderstood] = useState<string[]>([])
   const [problem, setProblem] = useState<TalkProblem | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
-  const latest = useRef({ settings, update, remakeSong })
+  const latest = useRef({ settings, update, remakeSong, gnome })
   useEffect(() => {
-    latest.current = { settings, update, remakeSong }
+    latest.current = { settings, update, remakeSong, gnome }
   })
   const versions = useRef<SongSettings[]>([]) // earlier versions, newest last
   const stopRecording = useRef<(() => void) | null>(null)
@@ -47,10 +50,10 @@ export function useTalk({ settings, update, remakeSong }: TalkOptions) {
 
   /** Sends what was said, then speaks the answer while the new version of the song is made. */
   const answer = useCallback(async (recording: Blob) => {
-    const { settings: before, update, remakeSong } = latest.current
+    const { settings: before, update, remakeSong, gnome: character } = latest.current
     setPhase('thinking')
     try {
-      const turn = await sendTalk(recording, before, versions.current.at(-1) ?? null)
+      const turn = await sendTalk(recording, before, versions.current.at(-1) ?? null, character)
       if (turn.error) console.warn('[ECKO talk] the backend could not answer:', turn.error)
       const changed = turn.changed.length > 0
       if (changed) {

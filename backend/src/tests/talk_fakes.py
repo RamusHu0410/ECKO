@@ -26,7 +26,7 @@ class FakeGemini:
         self.error = error
         self.calls = []
 
-    def __call__(self, text, settings):
+    def __call__(self, text, settings, personality=None):
         self.calls.append((text, settings))
         if self.error:
             raise self.error
@@ -48,7 +48,7 @@ class FakeEars:
         return self.words
 
 
-def fake_voice(_text):
+def fake_voice(_text, _voice_id=None):
     yield b"ID3-first-chunk"
     yield b"-rest-of-the-mp3"
 

@@ -14,9 +14,10 @@ class Speaker:
         self._voice_id = voice_id
         self._model = model
 
-    def stream(self, text: str) -> Iterator[bytes]:
+    def stream(self, text: str, voice_id: str | None = None) -> Iterator[bytes]:
+        """`voice_id` speaks with another voice (a gnome character's); None uses the configured one."""
         chunks = self._client.text_to_speech.stream(
-            self._voice_id,
+            voice_id or self._voice_id,
             text=text,
             model_id=self._model,
             output_format=AUDIO_FORMAT,

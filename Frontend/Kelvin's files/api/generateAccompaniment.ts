@@ -1,25 +1,26 @@
 /*
- * Requests a generated accompaniment from the backend and returns audio the
- * browser can play.
+ * Makes the song from a hum with one of the three engines the sound slider blends: "Classical piano",
+ * "Synth" and "Creepy".
  *
- * Contract (Flask, backend/src/app/routes/accompaniment.py):
+ * Contract (Flask, backend/src/app/routes/main.py, accompaniment_generate):
  *   POST /accompaniment/generate  (JSON body)
  *   {
- *     melody: [{ hz, start, duration }, ...],  // hz = MIDI note number; time in beats
- *     key?, mode?, tempo?,
- *     style?: 'piano'|'pop'|'cinematic'|'classical'|'jazz'|'asian_folk',
- *     instrument?: 'synth'|'synth_pad'|'piano'|'guitar'|'guitar_jazz'|'strings'|'sax'|..., // synth by default
- *     modulate?: { key?, mode? },
- *     format: 'wav' | 'midi' | 'json',
+ *     melody: [{ hz, start, duration }, ...],  // hz = MIDI note number; time in beats (from /upload)
+ *     tempo?, mode?: 'major'|'minor',
+ *     style?: 'piano'|'pop'|'cinematic'|'classical'|'jazz'|'asian_folk',  // classical by default
+ *     instrument?: a General MIDI number (0-127) or a name ('synth', 'piano', ...),  // synth by default
+ *     format: 'wav',
+ *     sound?: 'normal'|'creepy',  // creepy renders with FluidSynth's retro demo soundfont
  *   }
- * With format=wav the response is audio/wav bytes; with format=json it is metadata.
+ * 200 → audio/wav bytes. 400 / 500 / 503 → JSON { error, details? }.
  *
  * The browser calls /api/accompaniment/generate; the Vite dev server forwards it to Flask
  * without the /api prefix (vite.config.ts), so requests stay same-origin and need no CORS.
  */
+import { TIMEOUT_MS, toHttpFailure, toNetworkFailure, type HumUpload } from './uploadHum'
+import type { SongSettings } from '../hooks/useSongSettings'
 
 const GENERATE_URL = '/api/accompaniment/generate'
-const TIMEOUT_MS = 90_000
 
 export interface MelodyNote {
   /** MIDI note number (e.g. 60 = middle C). Named hz for backend compatibility. */
@@ -30,118 +31,69 @@ export interface MelodyNote {
   duration: number
 }
 
-export interface GenerateOptions {
-  key?: string
-  mode?: 'major' | 'minor'
-  tempo?: number
-  style?: 'piano' | 'pop' | 'cinematic' | 'classical' | 'jazz' | 'asian_folk'
-  instrument?: string
-  modulate?: { key?: string; mode?: 'major' | 'minor' }
-}
-
-/** A finished accompaniment ready to play. */
-export interface Accompaniment {
-  /** Object URL for the WAV — assign to an <audio> src or `new Audio(url)`. Revoke when done. */
-  url: string
-  /** The raw WAV blob, if you want to download or re-use it. */
-  blob: Blob
-}
-
-export type GenerateFailureKind = 'unreachable' | 'timeout' | 'unavailable' | 'rejected' | 'server' | 'unexpected'
-
-export class GenerateError extends Error {
-  readonly kind: GenerateFailureKind
-  constructor(kind: GenerateFailureKind, detail: string) {
-    super(detail)
-    this.name = 'GenerateError'
-    this.kind = kind
-  }
-}
+export type Engine = 'classical-piano' | 'synth' | 'creepy'
 
 /**
- * Ask the backend to compose an accompaniment for `melody` and return a playable WAV.
- *
- * Play it with:
- *   const acc = await generateAccompaniment(melody, { style: 'jazz' })
- *   const audio = new Audio(acc.url)
- *   audio.play()
- *   // when finished: URL.revokeObjectURL(acc.url)
- *
- * Throws GenerateError on failure, or a DOMException "AbortError" if `signal` cancels it.
+ * What each engine asks the accompanist for: a style, and an instrument as its General MIDI number
+ * (0 = grand piano, 89 = warm pad). `lead` is talk mode's name for the same instrument
+ * (backend app/talk/song.py PROGRAMS), so its versions keep the engine's sound. Creepy is the
+ * classical piano through the retro soundfont, which only this route can play.
  */
-export async function generateAccompaniment(
-  melody: MelodyNote[],
-  options: GenerateOptions = {},
-  signal?: AbortSignal,
-): Promise<Accompaniment> {
-  const body = JSON.stringify({ melody, format: 'wav', ...options })
+export const ENGINES: Record<Engine, { style: string; instrument: number; lead: string; sound: 'normal' | 'creepy' }> = {
+  'classical-piano': { style: 'classical', instrument: 0, lead: 'piano', sound: 'normal' },
+  synth: { style: 'cinematic', instrument: 89, lead: 'synth pad', sound: 'normal' },
+  creepy: { style: 'classical', instrument: 0, lead: 'piano', sound: 'creepy' },
+}
 
-  const startedAt = performance.now()
-  devLog(`→ POST ${GENERATE_URL} (${melody.length} notes, style=${options.style ?? 'classical'})`)
+/** The engines from left to right on the sound slider. */
+export const ENGINE_ORDER: Engine[] = ['classical-piano', 'synth', 'creepy']
+
+/**
+ * The song for a saved hum with `engine`, as WAV. The faders shape it the same way talk mode's
+ * POST /talk/song does (backend app/talk/song.py, engine_request): speed changes the tempo, pitch
+ * moves the tune up to an octave, emotion picks minor or major.
+ * Throws UploadError for every failure, or a DOMException "AbortError" if `signal` cancels it.
+ */
+export async function generateSong(hum: HumUpload, engine: Engine, settings: SongSettings, signal?: AbortSignal): Promise<Blob> {
+  const shift = Math.round((settings.pitch - 0.5) * 24)
+  const tempo = hum.tempo ?? 100
+  const { style, instrument, sound } = ENGINES[engine]
+  const body = {
+    style,
+    instrument,
+    sound,
+    melody: (hum.melody ?? []).map((note) => ({ ...note, hz: Math.min(127, Math.max(0, note.hz + shift)) })),
+    tempo: Math.round(tempo * (0.5 + settings.speed) * 10) / 10,
+    mode: settings.emotion < 0.4 ? 'minor' : settings.emotion > 0.6 ? 'major' : undefined,
+    format: 'wav',
+  }
+  devLog(`→ POST ${GENERATE_URL} (${engine}, ${body.melody.length} notes)`)
 
   let response: Response
+  let text: string
   try {
     const timeout = AbortSignal.timeout(TIMEOUT_MS)
     response = await fetch(GENERATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body,
+      body: JSON.stringify(body),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     })
+    if (response.ok) return await response.blob()
+    text = await response.text()
   } catch (error) {
-    throw logFailure(toNetworkFailure(error))
+    throw toNetworkFailure(error)
   }
-
-  const contentType = response.headers.get('content-type') ?? ''
-  const elapsed = Math.round(performance.now() - startedAt)
-  devLog(`← ${response.status} ${contentType || 'no content type'}, ${elapsed} ms`)
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw logFailure(toHttpFailure(response.status, contentType, text))
-  }
-
-  if (!contentType.includes('audio')) {
-    const text = await response.text().catch(() => '')
-    throw logFailure(new GenerateError('unexpected', `Expected audio from the backend but got ${contentType || 'no content type'}: ${text.slice(0, 200)}`))
-  }
-
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  return { url, blob }
+  devLog(`← ${response.status} ${text.slice(0, 200)}`)
+  throw toHttpFailure(response.status, response.headers.get('content-type') ?? '', text)
 }
 
-function toNetworkFailure(error: unknown): Error {
-  if (error instanceof DOMException && error.name === 'AbortError') return error
-  if (error instanceof DOMException && error.name === 'TimeoutError') {
-    return new GenerateError('timeout', `No reply from the backend within ${TIMEOUT_MS / 1000} seconds.`)
-  }
-  return new GenerateError('unreachable', `The request never reached the backend: ${String(error)}`)
-}
-
-function toHttpFailure(status: number, contentType: string, body: string): GenerateError {
-  const reply = contentType.includes('application/json') ? (parseJson(body) as { error?: string; details?: string } | null) : null
-  const said = [reply?.error, reply?.details].filter(Boolean).join(': ') || body.slice(0, 200) || 'no details'
-  if (status >= 502 && status <= 504) return new GenerateError('unreachable', `The backend isn't answering (${status}).`)
-  // 503 = WAV rendering unavailable (FluidSynth/soundfont missing on the server).
-  if (status === 503) return new GenerateError('unavailable', `Audio rendering is unavailable on the server: ${said}`)
-  if (status >= 500) return new GenerateError('server', `${status}: ${said}`)
-  return new GenerateError('rejected', `${status}: ${said}`)
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
+/** The song settings that make talk mode's version (POST /talk/song) sound like `engine`: its style, and its instrument as the lead. */
+export function engineSettings(settings: SongSettings, engine: Engine): Partial<SongSettings> {
+  const { style, lead } = ENGINES[engine]
+  return { style, instruments: settings.instruments.map((part) => (part.role === 'lead' ? { ...part, name: lead } : part)) }
 }
 
 function devLog(message: string) {
   if (import.meta.env.DEV) console.info(`[ECKO api] ${message}`)
-}
-
-function logFailure<E extends Error>(error: E): E {
-  if (import.meta.env.DEV && error.name !== 'AbortError') console.warn(`[ECKO api] ✕ ${error.name}: ${error.message}`)
-  return error
 }

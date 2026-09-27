@@ -27,6 +27,8 @@ export interface HumUpload {
   audio_analysis?: HumAnalysis
   /** Present when the backend analysed the hum: notes ready for POST /accompaniment/generate. */
   melody?: MelodyNote[]
+  /** The tempo `melody`'s beats are counted in. */
+  tempo?: number
   /** Present when the file was saved but the backend couldn't analyse it. */
   processing_error?: string
   processing_time_seconds: number

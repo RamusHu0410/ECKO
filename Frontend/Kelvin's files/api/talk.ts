@@ -1,6 +1,6 @@
 /*
  * Talk mode's calls to the backend, and making the song (Flask, backend/src/app/routes/talk.py):
- *   POST /talk/voice        multipart: the recording in "audio", {settings, previous} in "state"
+ *   POST /talk/voice        multipart: the recording in "audio", {settings, previous, character} in "state"
  *   GET  /talk/speech/<id>  the spoken reply, streamed as MP3
  *   POST /talk/song         JSON {hum, settings} → the song as WAV, made from the saved hum
  *   POST /talk/notes        JSON {hum, settings} → the notes heard in the hum and the notes the song plays
@@ -8,6 +8,7 @@
  */
 import { TIMEOUT_MS, toHttpFailure, toNetworkFailure } from './uploadHum'
 import type { SongSettings } from '../hooks/useSongSettings'
+import type { GnomeId } from '../data/gnomes'
 
 /** What the backend understood from one spoken command, and the settings after it. */
 export interface TalkTurn {
@@ -56,11 +57,11 @@ export interface SongNotes {
 
 const TALK_TIMEOUT_MS = 30_000
 
-/** Sends a spoken command with the current settings (commands are relative, like "a bit faster"). */
-export async function sendTalk(recording: Blob, settings: SongSettings, previous: SongSettings | null): Promise<TalkTurn> {
+/** Sends a spoken command with the current settings (commands are relative, like "a bit faster"); `character` is the gnome who answers. */
+export async function sendTalk(recording: Blob, settings: SongSettings, previous: SongSettings | null, character: GnomeId): Promise<TalkTurn> {
   const form = new FormData()
   form.append('audio', recording, recordingName(recording.type))
-  form.append('state', JSON.stringify({ settings, previous }))
+  form.append('state', JSON.stringify({ settings, previous, character }))
   const response = await fetch('/api/talk/voice', { method: 'POST', body: form, signal: AbortSignal.timeout(TALK_TIMEOUT_MS) })
   const reply = (await response.json().catch(() => null)) as (TalkTurn & { error?: string }) | null
   if (!response.ok || !reply) throw new Error(reply?.error ?? `The backend answered ${response.status}`)
