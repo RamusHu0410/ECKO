@@ -1,5 +1,11 @@
 """Rendered audio -> the final 24-bit WAV, through a per-style Pedalboard chain:
 Compressor -> LowShelfFilter -> Reverb -> Limiter (settings in config.STYLES).
+
+pedalboard is optional. Its native library needs system libraries (libatomic.so.1, libX11) that
+some hosts don't ship -- Vercel's Python runtime is one, where importing it took down the whole app
+at startup. When it's missing, apply_effects raises and steps.py falls back to
+copy_without_effects, so the song is still written, just without the effects chain. Reading and
+writing go through soundfile (a dependency either way), so the fallback needs no pedalboard at all.
 """
 
 from __future__ import annotations
@@ -8,8 +14,15 @@ import logging
 from pathlib import Path
 
 import numpy as np
-from pedalboard import Compressor, Limiter, LowShelfFilter, Pedalboard, Reverb
-from pedalboard.io import AudioFile
+import soundfile as sf
+
+try:
+    from pedalboard import Compressor, Limiter, LowShelfFilter, Pedalboard, Reverb
+except Exception as exc:  # noqa: BLE001 - ImportError here, but a missing .so can raise OSError
+    Pedalboard = None
+    _PEDALBOARD_UNAVAILABLE: Exception | None = exc
+else:
+    _PEDALBOARD_UNAVAILABLE = None
 
 from .config import Effects
 from .files import write_atomically
@@ -24,6 +37,8 @@ INPUT_PEAK = 10 ** (-6 / 20)  # the chain's thresholds assume input peaking at -
 
 
 def build_chain(settings: Effects) -> Pedalboard:
+    if Pedalboard is None:
+        raise RuntimeError(f"pedalboard isn't usable on this host: {_PEDALBOARD_UNAVAILABLE}")
     return Pedalboard([
         Compressor(
             threshold_db=settings.compressor_threshold_db,
@@ -45,8 +60,9 @@ def build_chain(settings: Effects) -> Pedalboard:
 
 def read_audio(path: str | Path) -> tuple[np.ndarray, int]:
     """(channels, samples) float32 and the sample rate, as Pedalboard wants it."""
-    with AudioFile(str(path)) as handle:
-        return handle.read(handle.frames), int(handle.samplerate)
+    audio, sample_rate = sf.read(str(path), dtype="float32", always_2d=True)
+    # soundfile gives (samples, channels); transpose, and make it contiguous for the chain.
+    return np.ascontiguousarray(audio.T), int(sample_rate)
 
 
 def _safe_level(audio: np.ndarray) -> np.ndarray:
@@ -61,8 +77,7 @@ def write_24bit(audio: np.ndarray, sample_rate: int, path: str | Path) -> Path:
     check_audio(audio, where="final audio")
 
     def write(tmp: Path) -> None:
-        with AudioFile(str(tmp), "w", sample_rate, audio.shape[0], bit_depth=24) as handle:
-            handle.write(audio)
+        sf.write(str(tmp), audio.T, sample_rate, subtype="PCM_24")
 
     return write_atomically(path, write, lambda p: validate_audio(p, sample_rate=sample_rate, subtype="PCM_24"))
 
