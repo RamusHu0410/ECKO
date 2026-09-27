@@ -48,7 +48,7 @@ def _upload(client, data=b"RIFFfakeWAVE", name="recording.wav"):
 
 def test_upload_serializes_numpy_boolean_analysis(client, monkeypatch):
     """Regression test for NumPy bool values causing upload responses to 500."""
-    monkeypatch.setattr(main_routes, "analyze_audio_file", _fake_analysis([]))
+    monkeypatch.setattr(main_routes, "analyze_audio_file", _fake_analysis([{"hz": 60.0, "start": 0.0, "duration": 0.5}]))  # a hum with no tune is a 400 now
     monkeypatch.setattr(main_routes, "clean_wav", lambda path, target_sr: path)
 
     response = _upload(client)

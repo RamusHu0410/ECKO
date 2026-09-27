@@ -26,6 +26,10 @@ dependencies = [
     "flask-cors>=6.0.5",
     "elevenlabs>=2.69.0",
     "google-genai>=2.25.0",
+    "basic-pitch>=0.4.0",
+    "onnxruntime>=1.20",
+    "setuptools<81",
+    "av>=14",
 ]
 
 [tool.pytest.ini_options]
@@ -56,3 +60,8 @@ members = [
 
 [tool.uv.sources]
 accompanist = { workspace = true, editable = true }
+
+[tool.uv]
+# basic-pitch (audio intake: hum → notes) asks for an old TensorFlow that has no Python 3.14 builds.
+# It runs its ONNX model with onnxruntime instead, so its TensorFlow and CoreML requirements are left out.
+exclude-dependencies = ["tensorflow", "tensorflow-macos", "coremltools"]

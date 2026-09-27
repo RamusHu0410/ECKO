@@ -102,8 +102,8 @@ export default function HomePage() {
               <GlassMessage
                 key="upload-failed"
                 title={UPLOAD_FAILED_TITLE}
-                body={UPLOAD_HELP[uploadFailure.kind].body}
-                detail={UPLOAD_HELP[uploadFailure.kind].showDetail ? uploadFailure.message : undefined}
+                body={uploadFailure.reason ?? UPLOAD_HELP[uploadFailure.kind].body}
+                detail={!uploadFailure.reason && UPLOAD_HELP[uploadFailure.kind].showDetail ? uploadFailure.message : undefined}
                 actions={
                   <>
                     <GlassButton onClick={session.retry}>Try again</GlassButton>

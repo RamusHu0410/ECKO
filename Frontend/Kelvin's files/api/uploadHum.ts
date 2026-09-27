@@ -4,7 +4,8 @@
  * Contract (Flask, backend/src/app/routes/main.py): POST /upload, multipart form data with the
  * recording in a field named "file" whose filename ends in .wav, at most 50 MB.
  * 201 → JSON describing the saved file, plus either `audio_analysis` or `processing_error`.
- * 400 → JSON { error }, 500 → JSON { error, details }, 413 → too large (HTML).
+ * 400 → JSON { error } (plus code "no_tune" when no tune was heard), 500 → JSON { error, details },
+ * 413 → too large (HTML).
  * The browser calls /api/upload; the Vite dev server forwards it to Flask without the /api
  * prefix (vite.config.ts), so requests stay same-origin and need no CORS.
  */
@@ -46,14 +47,19 @@ export interface HumAnalysis {
 
 export type UploadFailureKind = 'conversion' | 'unreachable' | 'timeout' | 'too-large' | 'rejected' | 'server' | 'unexpected'
 
-/** A failed upload: a kind the UI can explain, plus the technical detail (the backend's own words when it sent any). */
+/**
+ * A failed upload: a kind the UI can explain, the technical detail, and, when the backend refused
+ * the recording and said why in words for the user (e.g. "No tune was found…"), that reason.
+ */
 export class UploadError extends Error {
   readonly kind: UploadFailureKind
+  readonly reason: string | null
 
-  constructor(kind: UploadFailureKind, detail: string) {
+  constructor(kind: UploadFailureKind, detail: string, reason: string | null = null) {
     super(detail)
     this.name = 'UploadError'
     this.kind = kind
+    this.reason = reason
   }
 }
 
@@ -125,7 +131,7 @@ export function toHttpFailure(status: number, contentType: string, body: string)
   // the Vite proxy answers 502–504 itself when nothing is listening on the backend's port
   if (status >= 502 && status <= 504) return new UploadError('unreachable', `The backend isn't answering (${status}).`)
   if (status >= 500) return new UploadError('server', `${status}: ${said}`)
-  return new UploadError('rejected', `${status}: ${said}`)
+  return new UploadError('rejected', `${status}: ${said}`, reply?.error ?? null)
 }
 
 function parseJson(text: string): unknown {
