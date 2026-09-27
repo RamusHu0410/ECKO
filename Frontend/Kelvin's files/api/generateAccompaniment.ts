@@ -19,8 +19,9 @@
  */
 import { TIMEOUT_MS, toHttpFailure, toNetworkFailure, type HumUpload } from './uploadHum'
 import type { SongSettings } from '../hooks/useSongSettings'
+import { apiUrl } from './base'
 
-const GENERATE_URL = '/api/accompaniment/generate'
+const GENERATE_URL = apiUrl('/api/accompaniment/generate')
 
 export interface MelodyNote {
   /** MIDI note number (e.g. 60 = middle C). Named hz for backend compatibility. */

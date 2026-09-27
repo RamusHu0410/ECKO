@@ -3,6 +3,7 @@
  * back (status code and body) instead of throwing, because showing failures is the page's job.
  * The dev server forwards /api/me, /api/recordings, ... to Flask unchanged (vite.config.ts).
  */
+import { apiUrl } from './base'
 
 export interface ApiResult {
   /** 0 when the request never got an answer (the backend isn't running, the network is down). */
@@ -13,7 +14,7 @@ export interface ApiResult {
 export async function callApi(path: string, { token, method = 'GET', body }: { token?: string; method?: string; body?: BodyInit } = {}): Promise<ApiResult> {
   let response: Response
   try {
-    response = await fetch(path, {
+    response = await fetch(apiUrl(path), {
       method,
       body,
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -31,7 +32,7 @@ export async function callApi(path: string, { token, method = 'GET', body }: { t
 export async function fetchFileUrl(path: string, token: string): Promise<ApiResult & { url?: string }> {
   let response: Response
   try {
-    response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } })
+    response = await fetch(apiUrl(path), { headers: { Authorization: `Bearer ${token}` } })
   } catch (error) {
     return { status: 0, body: { error: `No answer from the backend: ${String(error)}` } }
   }
