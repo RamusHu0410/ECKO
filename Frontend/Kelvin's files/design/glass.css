@@ -16,8 +16,8 @@
   .glass-surface {
     position: relative;
     z-index: 0;
-    -webkit-backdrop-filter: blur(var(--glass-blur)) brightness(var(--glass-brightness));
-    backdrop-filter: blur(var(--glass-blur)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
     box-shadow: var(--glass-shadow);
   }
 
@@ -28,8 +28,11 @@
     z-index: 1;
     border-radius: inherit;
     pointer-events: none;
-    background-image: linear-gradient(var(--glass-tint-angle), var(--glass-tint), var(--glass-tint-low));
+    background-image:
+      radial-gradient(120% 70% at 0% 0%, var(--glass-sheen), transparent 55%),
+      linear-gradient(var(--glass-tint-angle), var(--glass-tint), var(--glass-tint-low));
     box-shadow:
+      inset 0 0 14px var(--glass-edge-glow),
       inset 0 0 var(--glass-edge-shade-blur) var(--glass-edge-shade),
       inset 0 1px 0 var(--glass-inset-top),
       inset 0 -1px 0 var(--glass-inset-bottom);

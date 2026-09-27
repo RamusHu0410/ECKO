@@ -8,8 +8,8 @@ import type { NotesGraphLook } from '../drawing/drawNotesGraph'
 
 type TokenName = `--${string}`
 
-export function readToken(name: TokenName): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+export function readToken(name: TokenName, from: Element = document.documentElement): string {
+  return getComputedStyle(from).getPropertyValue(name).trim()
 }
 
 /** A numeric token with its unit dropped: "1200ms" → 1200, "24px" → 24, "31%" → 31. */
@@ -52,7 +52,8 @@ export function readNotesGraphLook(): NotesGraphLook {
   return {
     line: readToken('--color-amber'),
     glow: readToken('--color-amber-glow'),
-    played: readToken('--color-ink'),
-    guide: readToken('--color-ink-muted'),
+    // from <body>: a dark page background (design/backdrops.css) turns the text colours light there
+    played: readToken('--color-ink', document.body),
+    guide: readToken('--color-ink-muted', document.body),
   }
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import RecordRow from '../components/RecordRow/RecordRow'
+import BackdropPicker from '../components/BackdropPicker/BackdropPicker'
 import { useRecordPlayer } from '../hooks/useRecordPlayer'
 import { audioUrl, deleteRecord, describeRecord, listRecords, type SavedRecord } from '../data/records'
 import { me } from '../data/profile'
@@ -51,6 +52,8 @@ export default function ProfilePage() {
           <p className="mt-1 text-sm text-ink-muted">{person.bio}</p>
         </div>
       </motion.header>
+
+      <BackdropPicker />
 
       <section aria-labelledby="my-records" className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">

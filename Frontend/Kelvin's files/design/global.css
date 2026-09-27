@@ -7,6 +7,7 @@
 @import "./vinyl.css";
 @import "./scene.css";
 @import "./intro.css";
+@import "./backdrops.css";
 
 @layer base {
   html {

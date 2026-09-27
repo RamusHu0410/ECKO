@@ -25,15 +25,19 @@
   /*
    * Glass (glass.css): panel, faders, buttons, pills and messages on the page
    */
-  /* Committed white, a little clearer toward the bottom-right so the white rim has something to
-     shine against on a white page */
-  --glass-tint: rgba(255, 255, 255, 0.74);
-  --glass-tint-low: rgba(255, 255, 255, 0.34);
+  /* Clear glass: only a breath of white, clearer toward the bottom-right, so what's behind shows
+     through, blurred, brighter and a little more colourful; the rim, sheen and edge glow make it glass */
+  --glass-tint: rgba(255, 255, 255, 0.16);
+  --glass-tint-low: rgba(255, 255, 255, 0.04);
   --glass-tint-angle: 165deg;
-  --glass-tint-hover: rgba(255, 255, 255, 0.9);
-  --glass-tint-nested: rgba(255, 255, 255, 0.2);
-  --glass-blur: 14px;
-  --glass-brightness: 1.04;
+  --glass-tint-hover: rgba(255, 255, 255, 0.3);
+  --glass-tint-nested: rgba(255, 255, 255, 0.06);
+  --glass-blur: 16px;
+  --glass-brightness: 1.08;
+  --glass-saturation: 1.7;
+  /* Light catching the glass: a soft specular sheen at the top-left, and a glow just inside the edge */
+  --glass-sheen: rgba(255, 255, 255, 0.34);
+  --glass-edge-glow: rgba(255, 255, 255, 0.22);
   /* A soft shade just inside the edge, where the rim fades along the sides */
   --glass-edge-shade: rgba(120, 100, 80, 0.1);
   --glass-edge-shade-blur: 6px;

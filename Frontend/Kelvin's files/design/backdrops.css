@@ -1,0 +1,88 @@
+/*
+ * Page backgrounds, picked on the Profile page (components/BackdropPicker, design/backdrops.ts).
+ * Each is set as data-backdrop on <body>; paper, the default, is no attribute at all.
+ *
+ * They keep the eye on the turntable: colour and stars gather toward the edges and the centre stays
+ * calm, and the background holds still while the page scrolls. The dark ones (data-backdrop-tone)
+ * turn the text light everywhere, glass included, since the glass is clear.
+ *
+ * Set on <body>, not <html>: canvas drawing reads its colours from <html> (design/readToken.ts),
+ * and the record and the notes graph keep theirs whatever the background.
+ */
+@layer base {
+  body[data-backdrop] {
+    min-height: 100dvh;
+    background-attachment: fixed;
+  }
+
+  /* Galaxy: a deep night sky, soft nebulae toward the corners, and eight layers of stars */
+  body[data-backdrop="galaxy"],
+  .backdrop-swatch[data-backdrop="galaxy"] {
+    background-color: #0c0a1c;
+    background-image:
+      radial-gradient(1.5px 1.5px at 30px 40px, rgba(255, 255, 255, 0.95), transparent 60%),
+      radial-gradient(1px 1px at 120px 90px, rgba(255, 255, 255, 0.8), transparent 60%),
+      radial-gradient(1px 1px at 60px 20px, rgba(210, 220, 255, 0.85), transparent 60%),
+      radial-gradient(1.2px 1.2px at 80px 160px, rgba(255, 240, 220, 0.8), transparent 60%),
+      radial-gradient(1px 1px at 170px 190px, rgba(255, 255, 255, 0.7), transparent 60%),
+      radial-gradient(1.4px 1.4px at 240px 60px, rgba(255, 255, 255, 0.9), transparent 60%),
+      radial-gradient(1px 1px at 20px 300px, rgba(220, 225, 255, 0.75), transparent 60%),
+      radial-gradient(1.6px 1.6px at 310px 210px, rgba(255, 250, 240, 0.95), transparent 60%),
+      radial-gradient(55% 45% at 12% 12%, rgba(126, 82, 214, 0.42), transparent 70%),
+      radial-gradient(50% 42% at 90% 85%, rgba(46, 116, 214, 0.38), transparent 70%),
+      radial-gradient(40% 30% at 85% 10%, rgba(214, 90, 170, 0.22), transparent 70%),
+      radial-gradient(ellipse at 50% 45%, #171336 0%, #0c0a1c 75%);
+    /* each star layer repeats at its own, unrelated size, so together they never line up in rows */
+    background-size: 137px 137px, 173px 173px, 211px 211px, 263px 263px, 331px 331px, 397px 397px, 457px 457px, 523px 523px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  }
+
+  /* Aurora: dark teal, with green and violet light drifting across the top and bottom */
+  body[data-backdrop="aurora"],
+  .backdrop-swatch[data-backdrop="aurora"] {
+    background-color: #061a1f;
+    background-image:
+      radial-gradient(70% 28% at 25% 8%, rgba(64, 220, 160, 0.4), transparent 72%),
+      radial-gradient(60% 24% at 75% 16%, rgba(130, 96, 230, 0.36), transparent 72%),
+      radial-gradient(70% 30% at 60% 96%, rgba(40, 190, 200, 0.3), transparent 72%),
+      radial-gradient(ellipse at 50% 50%, #0b2a30 0%, #061a1f 78%);
+  }
+
+  /* Sunset: a light, warm sky, peach into rose into lavender */
+  body[data-backdrop="sunset"],
+  .backdrop-swatch[data-backdrop="sunset"] {
+    background-color: #fbe6d8;
+    background-image:
+      radial-gradient(60% 50% at 10% 0%, rgba(255, 183, 120, 0.55), transparent 70%),
+      radial-gradient(55% 45% at 95% 100%, rgba(196, 150, 230, 0.5), transparent 70%),
+      linear-gradient(170deg, #fde8d6 0%, #f9d6d8 55%, #e9dcf4 100%);
+  }
+
+  /* Ocean: a light, clear blue, deeper toward the bottom */
+  body[data-backdrop="ocean"],
+  .backdrop-swatch[data-backdrop="ocean"] {
+    background-color: #dff1f5;
+    background-image:
+      radial-gradient(55% 45% at 90% 5%, rgba(160, 230, 225, 0.6), transparent 70%),
+      radial-gradient(60% 50% at 5% 100%, rgba(90, 150, 220, 0.45), transparent 70%),
+      linear-gradient(180deg, #e8f6f6 0%, #cfe6f2 100%);
+  }
+
+  /* The dark backgrounds turn the page's text and lines light, on the page and on the glass alike
+     (the glass is clear, so the dark shows through it); the glass's edge hairline turns light too */
+  body[data-backdrop-tone="dark"] {
+    --glass-tint: rgba(255, 255, 255, 0.1);
+    --glass-tint-low: rgba(255, 255, 255, 0.02);
+    --glass-edge-dark: rgba(255, 255, 255, 0.14);
+    --color-page: #0c0a1c;
+    --color-ink: #f5f1ea;
+    --color-ink-muted: #bdb6cc;
+    --color-hairline: rgba(255, 255, 255, 0.16);
+  }
+}
+
+@layer components {
+  /* Paper's preview on the Profile page is the page colour itself (the others share their page's styles above) */
+  .backdrop-swatch[data-backdrop="paper"] {
+    background-color: #f4f1ec;
+  }
+}

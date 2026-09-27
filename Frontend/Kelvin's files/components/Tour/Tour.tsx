@@ -160,8 +160,18 @@ export default function Tour({ steps, onClose }: { steps: TourStep[]; onClose: (
         aria-describedby="tour-body"
         tabIndex={-1}
         className="glass-surface glass-panel fixed w-[min(20rem,calc(100vw-2rem))] px-5 py-5 outline-none transition-[left,top] duration-300"
-        // a frostier glass than the page's panels: the note often sits over the busy turntable
-        style={{ left: place?.x ?? -9999, top: place?.y ?? -9999, '--glass-tint': 'rgba(255, 255, 255, 0.93)', '--glass-tint-low': 'rgba(255, 255, 255, 0.84)' } as React.CSSProperties}
+        // frosted, not clear like the page's panels: the note often sits over the busy turntable, so
+        // it keeps a white tint with dark text on any background
+        style={
+          {
+            left: place?.x ?? -9999,
+            top: place?.y ?? -9999,
+            '--glass-tint': 'rgba(255, 255, 255, 0.93)',
+            '--glass-tint-low': 'rgba(255, 255, 255, 0.84)',
+            '--color-ink': '#2a2420',
+            '--color-ink-muted': '#6f665b',
+          } as React.CSSProperties
+        }
       >
         {place && <span className="tour-arrow" data-side={place.side} style={arrowStyle(place)} aria-hidden="true" />}
         <div className="glass-content">
