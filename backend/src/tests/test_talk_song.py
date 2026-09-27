@@ -118,8 +118,8 @@ def middle_of(song: list[tuple]) -> float:
 
 def test_the_first_song_is_the_engines_song_on_synth(tmp_path):
     song = tracks(tmp_path, SongSettings())
-    # chords and tune on the default synth; the tune's channel is 10% louder
-    assert [track[:3] for track in song] == [(81, False, 100), (81, False, 110)]
+    # chords and tune on the default synth; the tune's channel is well above the chords'
+    assert [track[:3] for track in song] == [(81, False, 85), (81, False, 110)]
 
 
 @pytest.mark.parametrize("style", [None, "piano", "classical", "jazz"])
@@ -176,10 +176,12 @@ def test_a_section_limits_where_an_instrument_plays(tmp_path):
 def test_the_lead_can_be_swapped_and_made_softer(tmp_path):
     song = tracks(tmp_path, SongSettings(instruments=(Part("guitar", "lead", "soft"),)))
     soft = LEAD_VOLUME["soft"] / LEAD_VOLUME["normal"]
-    # both engine tracks get softer, and the tune stays 10% louder than the chords
+    from accompanist.music.accompaniment import ACCOMP_CHANNEL_VOLUME, MELODY_CHANNEL_VOLUME
+
+    # both engine tracks get softer, and the tune stays louder than the chords
     assert [track[:3] for track in song] == [
-        (PROGRAMS["guitar"], False, round(100 * soft)),
-        (PROGRAMS["guitar"], False, round(110 * soft)),
+        (PROGRAMS["guitar"], False, round(ACCOMP_CHANNEL_VOLUME * soft)),
+        (PROGRAMS["guitar"], False, round(MELODY_CHANNEL_VOLUME * soft)),
     ]
 
 
